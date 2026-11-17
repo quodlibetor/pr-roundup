@@ -26,6 +26,7 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 toml = "1.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+webbrowser = "1.2"
 
 [lints.rust]
 unsafe_code = "forbid"

@@ -17,7 +17,7 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use color_eyre::{Result, eyre::WrapErr};
-use tracing::info;
+use tracing::{info, warn};
 
 #[derive(Parser)]
 #[command(about, args_conflicts_with_subcommands = true)]
@@ -49,6 +49,9 @@ struct Serve {
     /// Overrides the config file's port.
     #[arg(long)]
     port: Option<u16>,
+    /// Open the page in a browser once the server is listening.
+    #[arg(long)]
+    open: bool,
 }
 
 #[tokio::main]
@@ -107,7 +110,17 @@ async fn serve(config_path: &Path, args: Serve) -> Result<()> {
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .wrap_err_with(|| format!("binding {addr}"))?;
-    info!("serving on http://{addr}");
+    let url = format!("http://{addr}");
+    info!("serving on {url}");
+    if args.open {
+        // Opening can block until the browser starts, and failing to is no
+        // reason to stop serving.
+        tokio::task::spawn_blocking(move || {
+            if let Err(error) = webbrowser::open(&url) {
+                warn!(%error, "could not open a browser at {url}");
+            }
+        });
+    }
     axum::serve(listener, web::router(app))
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;

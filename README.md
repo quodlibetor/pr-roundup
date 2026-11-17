@@ -22,7 +22,7 @@ shape `jj spr list --format slack-links --copy` produces.
 ```sh
 pr-roundup init    # writes ~/.config/pr-roundup/config.toml
 $EDITOR ~/.config/pr-roundup/config.toml
-pr-roundup         # or: pr-roundup serve
+pr-roundup         # or: pr-roundup serve; add --open to open it in a browser
 ```
 
 Serving without a config file runs `init` instead. The server won't start
