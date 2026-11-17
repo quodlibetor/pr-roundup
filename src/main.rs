@@ -18,10 +18,10 @@ use tracing::info;
 #[derive(Parser)]
 #[command(about)]
 struct Args {
-    /// Defaults to $XDG_CONFIG_HOME/pr-link-copier/config.toml.
+    /// Defaults to $XDG_CONFIG_HOME/pr-roundup/config.toml.
     #[arg(long)]
     config: Option<PathBuf>,
-    /// Where tags are kept. Defaults to $XDG_DATA_HOME/pr-link-copier/tags.db.
+    /// Where tags are kept. Defaults to $XDG_DATA_HOME/pr-roundup/tags.db.
     #[arg(long)]
     db: Option<PathBuf>,
     /// Overrides the config file's port.
@@ -38,7 +38,7 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "pr_link_copier=info".into()),
+                .unwrap_or_else(|_| "pr_roundup=info".into()),
         )
         .init();
 

@@ -129,13 +129,13 @@ fn xdg_dir(var: &str, fallback: &str) -> Result<PathBuf> {
 
 pub fn default_config_path() -> Result<PathBuf> {
     Ok(xdg_dir("XDG_CONFIG_HOME", ".config")?
-        .join("pr-link-copier")
+        .join("pr-roundup")
         .join("config.toml"))
 }
 
 pub fn default_db_path() -> Result<PathBuf> {
     Ok(xdg_dir("XDG_DATA_HOME", ".local/share")?
-        .join("pr-link-copier")
+        .join("pr-roundup")
         .join("tags.db"))
 }
 

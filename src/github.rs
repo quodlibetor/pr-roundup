@@ -41,7 +41,7 @@ pub struct GitHub {
 impl GitHub {
     pub async fn new() -> Result<GitHub> {
         let http = reqwest::Client::builder()
-            .user_agent("pr-link-copier")
+            .user_agent("pr-roundup")
             .build()?;
         Ok(GitHub {
             http,

@@ -1,4 +1,4 @@
-# pr-link-copier
+# pr-roundup
 
 A local web page that lists your open pull requests, lets you tag them, and
 copies each tag's pull requests to the clipboard as a list for Slack, in the
@@ -20,14 +20,14 @@ shape `jj spr list --format slack-links --copy` produces.
 ## Running
 
 ```sh
-pr-link-copier --example-config > ~/.config/pr-link-copier/config.toml
-$EDITOR ~/.config/pr-link-copier/config.toml
+pr-roundup --example-config > ~/.config/pr-roundup/config.toml
+$EDITOR ~/.config/pr-roundup/config.toml
 cargo run --release
 ```
 
 The GitHub token comes from `$GITHUB_TOKEN`, or `gh auth token` when that is
 unset. Tags and repository order live in
-`$XDG_DATA_HOME/pr-link-copier/tags.db`.
+`$XDG_DATA_HOME/pr-roundup/tags.db`.
 
 ## Slack emoji
 

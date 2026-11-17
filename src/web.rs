@@ -63,7 +63,7 @@ async fn index(State(app): State<Arc<App>>) -> WebResult<Markup> {
             head {
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1";
-                title { "PR links" }
+                title { "PR roundup" }
                 link rel="stylesheet" href="/assets/style.css";
                 script src="/assets/htmx.min.js" {}
                 script src="/assets/htmx-ext-sse.js" {}
