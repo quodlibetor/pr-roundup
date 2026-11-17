@@ -79,6 +79,172 @@
     }, 1500);
   }
 
+  // The tag field's suggestions. Focusing the field lists the tags with open
+  // work on the page; typing filters them. Clicking a suggestion, or Enter on
+  // a highlighted one, applies it at once. Tab copies the highlighted one into
+  // the field instead, to be edited into a new tag.
+  const picker = { input: null, menu: null, items: [], index: -1, typed: false };
+
+  function liveTags() {
+    try {
+      return JSON.parse(board().dataset.tags || "[]");
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function openPicker(input) {
+    if (picker.input !== input) {
+      closePicker();
+      picker.input = input;
+      picker.typed = false;
+    }
+    picker.index = -1;
+    renderPicker();
+  }
+
+  function closePicker() {
+    if (picker.menu) picker.menu.remove();
+    if (picker.input) {
+      picker.input.setAttribute("aria-expanded", "false");
+      picker.input.removeAttribute("aria-activedescendant");
+    }
+    picker.input = null;
+    picker.menu = null;
+    picker.items = [];
+    picker.index = -1;
+  }
+
+  function renderPicker() {
+    const input = picker.input;
+    const needle = picker.typed ? input.value.trim().toLowerCase() : "";
+    picker.items = liveTags().filter((tag) => tag.toLowerCase().includes(needle));
+    if (picker.index >= picker.items.length) picker.index = picker.items.length - 1;
+
+    if (picker.items.length === 0) {
+      if (picker.menu) picker.menu.remove();
+      picker.menu = null;
+      input.setAttribute("aria-expanded", "false");
+      input.removeAttribute("aria-activedescendant");
+      return;
+    }
+    if (!picker.menu) {
+      picker.menu = document.createElement("ul");
+      picker.menu.className = "tag-menu";
+      picker.menu.id = "tag-menu";
+      picker.menu.setAttribute("role", "listbox");
+      input.closest("form").appendChild(picker.menu);
+      input.setAttribute("aria-controls", "tag-menu");
+    }
+    picker.menu.replaceChildren(
+      ...picker.items.map((tag, i) => {
+        const li = document.createElement("li");
+        li.id = `tag-option-${i}`;
+        li.setAttribute("role", "option");
+        li.dataset.tag = tag;
+        li.textContent = tag;
+        if (i === picker.index) {
+          li.classList.add("active");
+          li.setAttribute("aria-selected", "true");
+        }
+        return li;
+      }),
+    );
+    input.setAttribute("aria-expanded", "true");
+    if (picker.index >= 0) {
+      input.setAttribute("aria-activedescendant", `tag-option-${picker.index}`);
+      picker.menu.children[picker.index].scrollIntoView({ block: "nearest" });
+    } else {
+      input.removeAttribute("aria-activedescendant");
+    }
+  }
+
+  function applyTag(input, tag) {
+    input.value = tag;
+    const form = input.closest("form");
+    closePicker();
+    form.requestSubmit();
+  }
+
+  function isTagInput(el) {
+    return !!(el && el.matches && el.matches("form.tag input[name=tag]"));
+  }
+
+  document.addEventListener("focusin", (event) => {
+    if (isTagInput(event.target)) openPicker(event.target);
+  });
+  // A click on a field that already has focus, after Escape closed its list.
+  document.addEventListener("click", (event) => {
+    if (isTagInput(event.target) && !picker.menu) openPicker(event.target);
+  });
+  document.addEventListener("focusout", (event) => {
+    if (event.target === picker.input) closePicker();
+  });
+  document.addEventListener("input", (event) => {
+    if (event.target !== picker.input) return;
+    picker.typed = true;
+    picker.index = -1;
+    renderPicker();
+  });
+  // Keep focus in the field while a suggestion is clicked.
+  document.addEventListener("mousedown", (event) => {
+    if (event.target.closest && event.target.closest(".tag-menu")) event.preventDefault();
+  });
+  document.addEventListener("click", (event) => {
+    const option = event.target.closest && event.target.closest(".tag-menu li");
+    if (option && picker.input) applyTag(picker.input, option.dataset.tag);
+  });
+  document.addEventListener("keydown", (event) => {
+    const input = event.target;
+    if (!isTagInput(input)) return;
+    if (picker.input !== input) openPicker(input);
+    const highlighted = picker.menu && picker.index >= 0 ? picker.items[picker.index] : null;
+    const step = (move) => {
+      event.preventDefault();
+      if (!picker.menu) {
+        picker.index = -1;
+        renderPicker();
+      }
+      const count = picker.items.length;
+      if (count) picker.index = move(picker.index, count);
+      renderPicker();
+    };
+    switch (event.key) {
+      case "ArrowDown":
+        step((i, count) => (i + 1) % count);
+        break;
+      case "ArrowUp":
+        step((i, count) => (i <= 0 ? count - 1 : i - 1));
+        break;
+      case "Tab":
+        if (highlighted !== null && !event.shiftKey) {
+          event.preventDefault();
+          input.value = highlighted;
+          picker.typed = true;
+          picker.index = -1;
+          if (picker.menu) picker.menu.remove();
+          picker.menu = null;
+          input.setAttribute("aria-expanded", "false");
+          input.removeAttribute("aria-activedescendant");
+        }
+        break;
+      case "Enter":
+        if (highlighted !== null) {
+          event.preventDefault();
+          applyTag(input, highlighted);
+        }
+        break;
+      case "Escape":
+        if (picker.menu) {
+          event.preventDefault();
+          picker.menu.remove();
+          picker.menu = null;
+          input.setAttribute("aria-expanded", "false");
+        }
+        break;
+    }
+  });
+
   // Drag a repository's heading to move it within its tag section.
   let dragged = null;
   document.addEventListener("dragstart", (event) => {

@@ -82,7 +82,8 @@ async fn board_fragment(State(app): State<Arc<App>>) -> WebResult<Markup> {
 }
 
 fn render_board(app: &App) -> color_eyre::Result<Markup> {
-    let (board, tag_names) = app.board()?;
+    let board = app.board()?;
+    let live_tags = serde_json::to_string(&board.live_tags())?;
     let (fetched_at, error) = {
         let latest = app
             .latest
@@ -91,7 +92,7 @@ fn render_board(app: &App) -> color_eyre::Result<Markup> {
         (latest.fetched_at, latest.error.clone())
     };
     Ok(html! {
-        div #board hx-get="/board" hx-trigger="sse:update, reload" hx-swap="outerHTML" {
+        div #board data-tags=(live_tags) hx-get="/board" hx-trigger="sse:update, reload" hx-swap="outerHTML" {
             p.status {
                 @match fetched_at {
                     Some(at) => { "Updated " time data-epoch=(at) { (at) } }
@@ -100,9 +101,6 @@ fn render_board(app: &App) -> color_eyre::Result<Markup> {
             }
             @if let Some(error) = error {
                 pre.error { (error) }
-            }
-            datalist #tag-names {
-                @for name in &tag_names { option value=(name) {} }
             }
             @if board.sections.is_empty() {
                 p.empty { "No open pull requests." }
@@ -154,7 +152,10 @@ fn pr_row(pr: &Pr, tag: Option<&str>) -> Markup {
             @if pr.is_finished() { span.badge.(pr.status.css_class()) { (pr.status.label()) } }
             form.tag hx-post="/tag" hx-trigger="change, submit" hx-target="#board" hx-swap="outerHTML" {
                 input type="hidden" name="id" value=(pr.id);
-                input type="text" name="tag" list="tag-names" autocomplete="off"
+                // assets/app.js turns this into a combobox offering the
+                // tags in #board's data-tags.
+                input type="text" name="tag" autocomplete="off" role="combobox"
+                    aria-autocomplete="list" aria-expanded="false"
                     placeholder="+ tag" value=[tag];
             }
             @if tag.is_some() {

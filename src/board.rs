@@ -28,6 +28,24 @@ pub struct RepoGroup {
     pub stacks: Vec<Vec<Pr>>,
 }
 
+impl Board {
+    /// The tags offered when tagging: those with open work on the page, so
+    /// a tag whose pull requests have all merged stops being suggested.
+    pub fn live_tags(&self) -> Vec<&str> {
+        self.sections
+            .iter()
+            .filter(|section| {
+                section
+                    .repos
+                    .iter()
+                    .flat_map(|group| group.stacks.iter().flatten())
+                    .any(|pr| !pr.is_finished())
+            })
+            .filter_map(|section| section.tag.as_deref())
+            .collect()
+    }
+}
+
 impl Section {
     /// The key this section's repository order is stored under.
     pub fn order_key(&self) -> &str {
@@ -335,6 +353,22 @@ mod tests {
         let sections: Vec<_> = board.sections.iter().map(|s| s.tag.clone()).collect();
         assert_eq!(sections, vec![Some("work".to_string()), None]);
         assert_eq!(ids(&board.sections[1].repos[0].stacks), vec![vec!["open"]]);
+    }
+
+    #[test]
+    fn only_tags_with_open_work_are_suggested() {
+        let mut merged = pr("merged", "o/r", "main", "a", "1");
+        merged.status = Status::Merged;
+        let tags = HashMap::from([
+            ("merged".to_string(), "done".to_string()),
+            ("open".to_string(), "active".to_string()),
+        ]);
+        let board = build(
+            vec![merged, pr("open", "o/r", "main", "b", "1")],
+            &tags,
+            &HashMap::new(),
+        );
+        assert_eq!(board.live_tags(), vec!["active"]);
     }
 
     #[test]

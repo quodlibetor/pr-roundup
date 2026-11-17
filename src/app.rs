@@ -91,7 +91,7 @@ impl App {
         }
     }
 
-    pub fn board(&self) -> Result<(Board, Vec<String>)> {
+    pub fn board(&self) -> Result<Board> {
         let (tagged, orders) = {
             let store = self.store()?;
             (store.tagged()?, store.repo_orders()?)
@@ -110,10 +110,7 @@ impl App {
             }
             tags.insert(id, tagged.tag);
         }
-        let mut names: Vec<String> = tags.values().cloned().collect();
-        names.sort();
-        names.dedup();
-        Ok((board::build(prs, &tags, &orders), names))
+        Ok(board::build(prs, &tags, &orders))
     }
 
     async fn poll_once(&self) -> Result<()> {
