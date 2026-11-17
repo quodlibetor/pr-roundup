@@ -128,16 +128,35 @@ impl Config {
             .wrap_err_with(|| format!("writing {}", path.display()))
     }
 
-    /// One GitHub search per configured repository or organization.
+    /// The GitHub searches covering every configured repository and
+    /// organization. GitHub reads several `repo:` and `org:` qualifiers in
+    /// one query as "any of these", so the scopes share as few queries as
+    /// GitHub's limit on a query's length allows.
     pub fn searches(&self) -> Vec<String> {
+        const FILTERS: &str = "is:pr is:open author:@me archived:false";
+        // GitHub rejects longer queries.
+        const MAX_LEN: usize = 256;
         let scopes = self
             .repos
             .iter()
             .map(|repo| format!("repo:{repo}"))
             .chain(self.orgs.iter().map(|org| format!("org:{org}")));
-        scopes
-            .map(|scope| format!("{scope} is:pr is:open author:@me archived:false"))
-            .collect()
+        let mut searches: Vec<String> = Vec::new();
+        let mut query = String::new();
+        for scope in scopes {
+            if !query.is_empty() && query.len() + scope.len() + FILTERS.len() + 2 > MAX_LEN {
+                searches.push(format!("{query} {FILTERS}"));
+                query.clear();
+            }
+            if !query.is_empty() {
+                query.push(' ');
+            }
+            query.push_str(&scope);
+        }
+        if !query.is_empty() {
+            searches.push(format!("{query} {FILTERS}"));
+        }
+        searches
     }
 }
 
@@ -181,6 +200,34 @@ mod tests {
         let again = Config::init(&path).unwrap_err().to_string();
         assert!(again.contains("already exists"), "{again}");
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn scopes_share_searches_up_to_githubs_length_limit() {
+        let mut config: Config = toml::from_str(EXAMPLE).unwrap();
+        config.repos = vec!["o/a".into()];
+        config.orgs = vec!["b".into()];
+        assert_eq!(
+            config.searches(),
+            vec!["repo:o/a org:b is:pr is:open author:@me archived:false"]
+        );
+
+        config.repos = (0..30).map(|i| format!("owner/repository-{i}")).collect();
+        let searches = config.searches();
+        assert!(searches.len() > 1, "{searches:?}");
+        assert!(searches.iter().all(|q| q.len() <= 256), "{searches:?}");
+        for scope in config
+            .repos
+            .iter()
+            .map(|r| format!("repo:{r} "))
+            .chain(["org:b ".into()])
+        {
+            assert_eq!(
+                searches.iter().filter(|q| q.contains(&scope)).count(),
+                1,
+                "{scope}"
+            );
+        }
     }
 
     #[test]
