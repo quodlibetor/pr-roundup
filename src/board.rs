@@ -214,6 +214,15 @@ pub struct Copied {
     pub html: String,
 }
 
+/// A pull request's configured emoji, separated by spaces.
+fn marks(emoji: &Emoji, pr: &Pr) -> String {
+    pr.marks()
+        .into_iter()
+        .map(|status| emoji.for_status(status))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Write `section` out the way `jj spr list --format slack` does, under the
 /// tag as a bold heading. Each stack is its own list; with `repo_headings`,
 /// each repository's stacks follow its name in italics.
@@ -231,14 +240,7 @@ pub fn copy(section: &Section, emoji: &Emoji, repo_headings: bool) -> Copied {
         let lists = group.stacks.iter().map(|stack| {
             stack
                 .iter()
-                .map(|pr| {
-                    format!(
-                        "- {} {}\n  {}",
-                        emoji.for_status(pr.status),
-                        pr.title,
-                        pr.url
-                    )
-                })
+                .map(|pr| format!("- {} {}\n  {}", marks(emoji, pr), pr.title, pr.url))
                 .collect::<Vec<_>>()
                 .join("\n")
         });
@@ -256,7 +258,7 @@ pub fn copy(section: &Section, emoji: &Emoji, repo_headings: bool) -> Copied {
                 let _ = write!(
                     html,
                     "<li>{} <a href=\"{}\">{}</a></li>",
-                    escape(emoji.for_status(pr.status)),
+                    escape(&marks(emoji, pr)),
                     escape(&pr.url),
                     escape(&pr.title),
                 );
@@ -287,6 +289,7 @@ mod tests {
             commented: "💬".into(),
             approved: ":github-approved:".into(),
             changes_requested: ":github-changes-requested:".into(),
+            needs_rereview: ":eyes:".into(),
             merged: ":git-merged:".into(),
             closed: "🚫".into(),
         }
@@ -305,6 +308,7 @@ mod tests {
             head: head.into(),
             updated_at: updated.into(),
             stack: None,
+            needs_rereview: false,
         }
     }
 

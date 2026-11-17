@@ -173,6 +173,7 @@ mod tests {
             head: "h".into(),
             updated_at: String::new(),
             stack: None,
+            needs_rereview: false,
         }
     }
 

@@ -26,13 +26,15 @@ orgs = []
 [emoji]
 pending = "🟠"
 changes_requested = "🔴"
-commented = "💬"
+commented = "💬" # has comments newer than your latest pushed commit
+needs_rereview = "🔵" # Pushed to since someone else's comments or requested changes.
 approved = "🟢"
 merged = "🟣"
 closed = "⚫️"
 # pending = "🟠"
 # changes_requested = ":github-changes-requested:"
 # commented = "💬"
+# needs_rereview = ":github-rereview:"
 # approved = ":github-approved:"
 # merged = ":github-merged:"
 # closed = ":github-closed:"
@@ -68,6 +70,7 @@ pub struct Emoji {
     pub commented: String,
     pub approved: String,
     pub changes_requested: String,
+    pub needs_rereview: String,
     pub merged: String,
     pub closed: String,
 }
@@ -79,6 +82,7 @@ impl Emoji {
             Status::Commented => &self.commented,
             Status::Approved => &self.approved,
             Status::ChangesRequested => &self.changes_requested,
+            Status::NeedsRereview => &self.needs_rereview,
             Status::Merged => &self.merged,
             Status::Closed => &self.closed,
         }

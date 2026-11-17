@@ -16,7 +16,13 @@ fragment Pr on PullRequest {
   repository { nameWithOwner }
   reviewDecision
   stackEntry { position stack { number } }
-  reviews(last: 20) { nodes { state } }
+  author { login }
+  reviews(last: 20) { nodes { state submittedAt author { __typename login } } }
+  comments(last: 20) { nodes { createdAt author { __typename login } } }
+  commits(last: 1) { nodes { commit { committedDate } } }
+  timelineItems(last: 1, itemTypes: [HEAD_REF_FORCE_PUSHED_EVENT]) {
+    nodes { ... on HeadRefForcePushedEvent { createdAt } }
+  }
 }";
 
 const SEARCH: &str = "
@@ -182,7 +188,11 @@ struct RawPr {
     repository: RawRepository,
     review_decision: Option<String>,
     stack_entry: Option<RawStackEntry>,
-    reviews: Option<RawReviews>,
+    author: Option<RawAuthor>,
+    reviews: Option<Nodes<RawReview>>,
+    comments: Option<Nodes<RawComment>>,
+    commits: Option<Nodes<RawCommitNode>>,
+    timeline_items: Option<Nodes<RawForcePush>>,
 }
 
 #[derive(Deserialize)]
@@ -203,13 +213,99 @@ struct RawStack {
 }
 
 #[derive(Deserialize)]
-struct RawReviews {
-    nodes: Vec<Option<RawReview>>,
+struct Nodes<T> {
+    nodes: Vec<Option<T>>,
+}
+
+impl<T> Nodes<T> {
+    fn iter(nodes: Option<&Nodes<T>>) -> impl Iterator<Item = &T> {
+        nodes
+            .into_iter()
+            .flat_map(|nodes| nodes.nodes.iter().flatten())
+    }
 }
 
 #[derive(Deserialize)]
+struct RawAuthor {
+    #[serde(rename = "__typename", default)]
+    typename: String,
+    login: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct RawReview {
     state: String,
+    /// Unset while the review is still a draft.
+    submitted_at: Option<String>,
+    author: Option<RawAuthor>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawComment {
+    created_at: String,
+    author: Option<RawAuthor>,
+}
+
+#[derive(Deserialize)]
+struct RawCommitNode {
+    commit: RawCommit,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawCommit {
+    /// A git timestamp, in the committer's own time zone.
+    committed_date: String,
+}
+
+/// Empty for the other timeline items, which the query doesn't ask for.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawForcePush {
+    created_at: Option<String>,
+}
+
+fn timestamp(text: &str) -> Option<jiff::Timestamp> {
+    text.parse().ok()
+}
+
+impl RawPr {
+    /// Whether `author` is someone giving feedback: not the pull request's
+    /// author, and not a bot such as CI.
+    fn is_reviewer(&self, author: Option<&RawAuthor>) -> bool {
+        let Some(author) = author else { return false };
+        author.typename != "Bot"
+            && self
+                .author
+                .as_ref()
+                .is_none_or(|own| own.login != author.login)
+    }
+
+    /// When someone else last reviewed or commented.
+    fn last_feedback(&self) -> Option<jiff::Timestamp> {
+        // A dismissed review has been withdrawn, often by a push that made
+        // an approval stale.
+        let reviews = Nodes::iter(self.reviews.as_ref())
+            .filter(|review| review.state != "DISMISSED")
+            .filter(|review| self.is_reviewer(review.author.as_ref()))
+            .filter_map(|review| review.submitted_at.as_deref());
+        let comments = Nodes::iter(self.comments.as_ref())
+            .filter(|comment| self.is_reviewer(comment.author.as_ref()))
+            .map(|comment| comment.created_at.as_str());
+        reviews.chain(comments).filter_map(timestamp).max()
+    }
+
+    /// When the branch last changed: its newest commit, or a force push
+    /// after it.
+    fn last_push(&self) -> Option<jiff::Timestamp> {
+        let commits =
+            Nodes::iter(self.commits.as_ref()).map(|node| node.commit.committed_date.as_str());
+        let force_pushes =
+            Nodes::iter(self.timeline_items.as_ref()).filter_map(|push| push.created_at.as_deref());
+        commits.chain(force_pushes).filter_map(timestamp).max()
+    }
 }
 
 impl From<RawPr> for Pr {
@@ -219,22 +315,16 @@ impl From<RawPr> for Pr {
             ("CLOSED", _) => Status::Closed,
             (_, Some("APPROVED")) => Status::Approved,
             (_, Some("CHANGES_REQUESTED")) => Status::ChangesRequested,
-            _ => {
-                // reviewDecision has no verdict for a review that only
-                // commented, so look at the reviews themselves, as `jj spr
-                // list` does.
-                let commented = raw
-                    .reviews
-                    .iter()
-                    .flat_map(|reviews| reviews.nodes.iter().flatten())
-                    .any(|review| review.state == "COMMENTED");
-                if commented {
-                    Status::Commented
-                } else {
-                    Status::Pending
-                }
-            }
+            // reviewDecision has no verdict for feedback that only
+            // commented, so look for the feedback itself.
+            _ if raw.last_feedback().is_some() => Status::Commented,
+            _ => Status::Pending,
         };
+        let needs_rereview = matches!(status, Status::Commented | Status::ChangesRequested)
+            && match (raw.last_feedback(), raw.last_push()) {
+                (Some(feedback), Some(push)) => push > feedback,
+                _ => false,
+            };
         Pr {
             id: raw.id,
             repo: raw.repository.name_with_owner,
@@ -250,6 +340,7 @@ impl From<RawPr> for Pr {
                 stack: entry.stack.number,
                 position: entry.position,
             }),
+            needs_rereview,
         }
     }
 }
@@ -279,7 +370,7 @@ async fn token() -> Result<String> {
 mod tests {
     use super::*;
 
-    fn node(state: &str, decision: Option<&str>, reviews: &[&str]) -> Value {
+    fn node(state: &str, decision: Option<&str>) -> Value {
         json!({
             "__typename": "PullRequest",
             "id": "PR_1", "number": 1, "title": "t", "url": "u",
@@ -288,13 +379,39 @@ mod tests {
             "repository": { "nameWithOwner": "o/r" },
             "reviewDecision": decision,
             "stackEntry": { "position": 2, "stack": { "number": 7 } },
-            "reviews": { "nodes": reviews.iter().map(|s| json!({ "state": s })).collect::<Vec<_>>() },
+            "author": { "login": "me" },
+            "reviews": { "nodes": [] },
+            "comments": { "nodes": [] },
+            "commits": { "nodes": [{ "commit": { "committedDate": "2026-01-01T10:00:00Z" } }] },
+            "timelineItems": { "nodes": [] },
         })
+    }
+
+    fn review(node: &mut Value, login: &str, kind: &str, at: &str) {
+        node["reviews"]["nodes"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({
+                "state": "COMMENTED", "submittedAt": at, "author": { "__typename": kind, "login": login },
+            }));
+    }
+
+    fn comment(node: &mut Value, login: &str, kind: &str, at: &str) {
+        node["comments"]["nodes"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({
+                "createdAt": at, "author": { "__typename": kind, "login": login },
+            }));
+    }
+
+    fn pushed(node: &mut Value, at: &str) {
+        node["commits"]["nodes"][0]["commit"]["committedDate"] = json!(at);
     }
 
     #[test]
     fn a_merged_pull_request_is_merged_whatever_its_reviews_said() {
-        let pr = pull_request(Some(node("MERGED", Some("CHANGES_REQUESTED"), &[]))).unwrap();
+        let pr = pull_request(Some(node("MERGED", Some("CHANGES_REQUESTED")))).unwrap();
         assert_eq!(pr.status, Status::Merged);
         assert_eq!(
             pr.stack,
@@ -306,11 +423,66 @@ mod tests {
     }
 
     #[test]
-    fn a_comment_without_a_verdict_counts_as_commented() {
-        let pr = pull_request(Some(node("OPEN", Some("REVIEW_REQUIRED"), &["COMMENTED"]))).unwrap();
+    fn only_someone_elses_comment_counts_as_commented() {
+        let mut open = node("OPEN", Some("REVIEW_REQUIRED"));
+        review(&mut open, "me", "User", "2026-01-01T11:00:00Z");
+        comment(&mut open, "ci", "Bot", "2026-01-01T11:00:00Z");
+        review(&mut open, "them", "User", "2026-01-01T11:00:00Z");
+        open["reviews"]["nodes"][1]["state"] = json!("DISMISSED");
+        assert_eq!(
+            pull_request(Some(open.clone())).unwrap().status,
+            Status::Pending
+        );
+
+        comment(&mut open, "them", "User", "2026-01-01T11:00:00Z");
+        let pr = pull_request(Some(open)).unwrap();
         assert_eq!(pr.status, Status::Commented);
-        let pr = pull_request(Some(node("OPEN", None, &[]))).unwrap();
-        assert_eq!(pr.status, Status::Pending);
+        assert_eq!(pr.marks(), vec![Status::Commented]);
+    }
+
+    #[test]
+    fn a_push_after_comments_needs_rereview_instead() {
+        let mut open = node("OPEN", None);
+        review(&mut open, "them", "User", "2026-01-01T11:00:00Z");
+        // 12:30 in UTC: later than the review, though its clock reads 07:30.
+        pushed(&mut open, "2026-01-01T07:30:00-05:00");
+        let pr = pull_request(Some(open)).unwrap();
+        assert!(pr.needs_rereview);
+        assert_eq!(pr.marks(), vec![Status::NeedsRereview]);
+    }
+
+    #[test]
+    fn a_force_push_counts_as_a_push() {
+        let mut open = node("OPEN", None);
+        comment(&mut open, "them", "User", "2026-01-01T11:00:00Z");
+        open["timelineItems"]["nodes"] = json!([{ "createdAt": "2026-01-01T12:00:00Z" }]);
+        assert!(pull_request(Some(open)).unwrap().needs_rereview);
+    }
+
+    #[test]
+    fn changes_requested_then_pushed_shows_both() {
+        let mut open = node("OPEN", Some("CHANGES_REQUESTED"));
+        review(&mut open, "them", "User", "2026-01-01T09:00:00Z");
+        let pr = pull_request(Some(open.clone())).unwrap();
+        assert_eq!(
+            pr.marks(),
+            vec![Status::ChangesRequested, Status::NeedsRereview]
+        );
+
+        // Their comment after the push hands it back to the author.
+        comment(&mut open, "them", "User", "2026-01-01T12:00:00Z");
+        let pr = pull_request(Some(open)).unwrap();
+        assert_eq!(pr.marks(), vec![Status::ChangesRequested]);
+    }
+
+    #[test]
+    fn an_approval_is_not_reopened_by_a_push() {
+        let mut open = node("OPEN", Some("APPROVED"));
+        review(&mut open, "them", "User", "2026-01-01T09:00:00Z");
+        assert_eq!(
+            pull_request(Some(open)).unwrap().marks(),
+            vec![Status::Approved]
+        );
     }
 
     #[test]

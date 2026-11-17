@@ -15,6 +15,7 @@ dist = true
 axum = "0.8"
 clap = { version = "4.6", features = ["derive"] }
 color-eyre = "0.6"
+jiff = { version = "1.0", default-features = false, features = ["std"] }
 maud = { version = "0.27", features = ["axum"] }
 reqwest = { version = "0.13", features = ["json"] }
 rusqlite = { version = "0.40", features = ["bundled"] }

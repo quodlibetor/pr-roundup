@@ -183,7 +183,9 @@ fn pr_row(pr: &Pr, tag: Option<&str>) -> Markup {
     let untag = serde_json::json!({ "id": pr.id, "tag": "" }).to_string();
     html! {
         li.pr.(pr.status.css_class()) {
-            span.icon title=(pr.status.label()) { (pr.status.icon()) }
+            @for mark in pr.marks() {
+                span.icon title=(mark.label()) { (mark.icon()) }
+            }
             a.title href=(pr.url) target="_blank" rel="noopener" { (pr.title) }
             span.num { "#" (pr.number) }
             @if pr.draft { span.badge { "draft" } }
