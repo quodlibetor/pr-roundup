@@ -4,6 +4,12 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/quodlibetor/pr-roundup"
+description = "A local page that groups your open pull requests by tag and copies them for Slack"
+
+# `publish = false` would otherwise keep dist from building the binary.
+[package.metadata.dist]
+dist = true
 
 [dependencies]
 axum = "0.8"
@@ -30,3 +36,8 @@ missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 unwrap_used = "deny"
 expect_used = "deny"
+
+# The profile dist builds releases with.
+[profile.dist]
+inherits = "release"
+lto = "thin"

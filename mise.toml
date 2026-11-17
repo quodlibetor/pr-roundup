@@ -1,0 +1,31 @@
+[settings]
+# Rust comes from rust-toolchain.toml, which rustup reads too (dist's CI).
+idiomatic_version_file_enable_tools = ["rust"]
+
+[tools]
+"aqua:axodotdev/cargo-dist" = "0.34.0"
+
+[tasks.fmt]
+description = "Check formatting"
+run = "cargo fmt --all --check"
+
+[tasks.lint]
+description = "Run clippy with warnings as errors"
+run = "cargo clippy --all-targets --locked -- -D warnings"
+
+[tasks.test]
+description = "Run the tests"
+run = "cargo test --locked"
+
+[tasks.dist]
+description = "Check release.yml is what dist generates"
+# The ceiling keeps dist in this checkout: from a jj workspace, git would
+# find the main checkout instead.
+run = """
+GIT_CEILING_DIRECTORIES="$(dirname "$PWD")" dist generate --check \\
+  || { echo "release.yml is stale: run dist generate (see README)" >&2; exit 1; }
+"""
+
+[tasks.check]
+description = "The gate every change must pass"
+depends = ["fmt", "lint", "dist", "test"]
