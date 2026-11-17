@@ -7,7 +7,11 @@ use std::{
     fmt::Write as _,
 };
 
-use crate::{config::Emoji, model::Pr, store::UNTAGGED};
+use crate::{
+    config::Emoji,
+    model::{Pr, Status},
+    store::UNTAGGED,
+};
 
 #[derive(Debug)]
 pub struct Board {
@@ -54,16 +58,21 @@ impl Section {
 }
 
 /// Lay out `prs`. A pull request in `tags` goes in that tag's section;
-/// one that isn't tagged is shown only while it is open.
+/// one that isn't tagged is shown only while it is open. Approved pull
+/// requests are left out unless `include_approved`.
 pub fn build(
     prs: Vec<Pr>,
     tags: &HashMap<String, String>,
     orders: &HashMap<String, Vec<String>>,
+    include_approved: bool,
 ) -> Board {
     let mut by_tag: BTreeMap<Option<String>, Vec<Pr>> = BTreeMap::new();
     for pr in prs {
         let tag = tags.get(&pr.id).cloned();
         if tag.is_none() && pr.is_finished() {
+            continue;
+        }
+        if !include_approved && pr.status == Status::Approved {
             continue;
         }
         by_tag.entry(tag).or_default().push(pr);
@@ -352,6 +361,7 @@ mod tests {
             vec![merged, kept, pr("open", "o/r", "main", "c", "1")],
             &tags,
             &HashMap::new(),
+            true,
         );
         let sections: Vec<_> = board.sections.iter().map(|s| s.tag.clone()).collect();
         assert_eq!(sections, vec![Some("work".to_string()), None]);
@@ -370,8 +380,32 @@ mod tests {
             vec![merged, pr("open", "o/r", "main", "b", "1")],
             &tags,
             &HashMap::new(),
+            true,
         );
         assert_eq!(board.live_tags(), vec!["active"]);
+    }
+
+    #[test]
+    fn approved_pull_requests_can_be_left_out() {
+        let mut approved = pr("approved", "o/r", "main", "a", "1");
+        approved.status = Status::Approved;
+        let mut merged = pr("merged", "o/r", "main", "b", "1");
+        merged.status = Status::Merged;
+        let tags = HashMap::from([("merged".to_string(), "t".to_string())]);
+        let prs = vec![approved, merged, pr("open", "o/r", "main", "c", "1")];
+
+        let board = build(prs.clone(), &tags, &HashMap::new(), false);
+        let shown: Vec<&str> = board
+            .sections
+            .iter()
+            .flat_map(|section| &section.repos)
+            .flat_map(|group| group.stacks.iter().flatten())
+            .map(|pr| pr.id.as_str())
+            .collect();
+        assert_eq!(shown, vec!["merged", "open"]);
+
+        let board = build(prs, &tags, &HashMap::new(), true);
+        assert_eq!(board.sections[1].repos[0].stacks.len(), 2);
     }
 
     #[test]
@@ -382,7 +416,7 @@ mod tests {
             pr("3", "c/c", "main", "3", "1"),
         ];
         let orders = HashMap::from([(UNTAGGED.to_string(), vec!["c/c".to_string()])]);
-        let board = build(prs, &HashMap::new(), &orders);
+        let board = build(prs, &HashMap::new(), &orders, true);
         let repos: Vec<_> = board.sections[0]
             .repos
             .iter()

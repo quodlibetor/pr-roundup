@@ -6,7 +6,7 @@
 use std::{collections::HashMap, path::Path};
 
 use color_eyre::{Result, eyre::WrapErr};
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::model::Pr;
 
@@ -49,6 +49,10 @@ impl Store {
                  repo TEXT NOT NULL,
                  position INTEGER NOT NULL,
                  PRIMARY KEY (tag, repo)
+             );
+             CREATE TABLE IF NOT EXISTS settings (
+                 key TEXT PRIMARY KEY,
+                 value TEXT NOT NULL
              );",
         )?;
         Ok(Store { conn })
@@ -96,6 +100,28 @@ impl Store {
         for pr in prs {
             statement.execute(params![pr.id, serde_json::to_string(pr)?])?;
         }
+        Ok(())
+    }
+
+    /// Whether approved pull requests are listed. They are until told not to.
+    pub fn include_approved(&self) -> Result<bool> {
+        let value: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'include_approved'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(value.as_deref() != Some("false"))
+    }
+
+    pub fn set_include_approved(&self, include: bool) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('include_approved', ?1)
+             ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+            params![include.to_string()],
+        )?;
         Ok(())
     }
 
@@ -164,6 +190,16 @@ mod tests {
 
         store.clear_tag("a").unwrap();
         assert!(store.tagged().unwrap().is_empty());
+    }
+
+    #[test]
+    fn approved_pull_requests_are_included_until_turned_off() {
+        let store = Store::in_memory().unwrap();
+        assert!(store.include_approved().unwrap());
+        store.set_include_approved(false).unwrap();
+        assert!(!store.include_approved().unwrap());
+        store.set_include_approved(true).unwrap();
+        assert!(store.include_approved().unwrap());
     }
 
     #[test]

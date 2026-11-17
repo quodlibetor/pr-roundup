@@ -305,6 +305,17 @@
     }
   });
 
+  // The setting is kept by the server, so every open tab follows it: the
+  // change it announces reloads the board, header included.
+  document.addEventListener("change", (event) => {
+    if (event.target.id !== "include-approved") return;
+    fetch("/include-approved", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ include: event.target.checked }),
+    });
+  });
+
   // Drag a repository's heading to move it within its tag section.
   let dragged = null;
   document.addEventListener("dragstart", (event) => {

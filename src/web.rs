@@ -31,6 +31,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/tag", post(set_tag))
         .route("/order", post(set_order))
         .route("/refresh", post(refresh))
+        .route("/include-approved", post(set_include_approved))
         .route("/assets/{file}", get(asset))
         .with_state(app)
 }
@@ -90,9 +91,14 @@ fn render_controls(app: &App, oob: bool) -> color_eyre::Result<Markup> {
         .read()
         .map_err(|_| color_eyre::eyre::eyre!("lock poisoned"))?
         .fetched_at;
+    let include_approved = app.store()?.include_approved()?;
     Ok(html! {
         div #controls hx-swap-oob=[oob.then_some("true")] {
             div.buttons {
+                label.include-approved {
+                    input #include-approved type="checkbox" checked[include_approved];
+                    "Include approved"
+                }
                 button.refresh hx-post="/refresh" hx-swap="none" { "Refresh now" }
             }
             p.updated {
@@ -237,6 +243,20 @@ async fn set_order(
     Json(body): Json<OrderBody>,
 ) -> WebResult<StatusCode> {
     app.store()?.set_repo_order(&body.tag, &body.repos)?;
+    app.changed();
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct IncludeApproved {
+    include: bool,
+}
+
+async fn set_include_approved(
+    State(app): State<Arc<App>>,
+    Json(body): Json<IncludeApproved>,
+) -> WebResult<StatusCode> {
+    app.store()?.set_include_approved(body.include)?;
     app.changed();
     Ok(StatusCode::NO_CONTENT)
 }

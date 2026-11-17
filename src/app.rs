@@ -92,9 +92,13 @@ impl App {
     }
 
     pub fn board(&self) -> Result<Board> {
-        let (tagged, orders) = {
+        let (tagged, orders, include_approved) = {
             let store = self.store()?;
-            (store.tagged()?, store.repo_orders()?)
+            (
+                store.tagged()?,
+                store.repo_orders()?,
+                store.include_approved()?,
+            )
         };
         let mut prs = self
             .latest
@@ -110,7 +114,7 @@ impl App {
             }
             tags.insert(id, tagged.tag);
         }
-        Ok(board::build(prs, &tags, &orders))
+        Ok(board::build(prs, &tags, &orders, include_approved))
     }
 
     async fn poll_once(&self) -> Result<()> {
