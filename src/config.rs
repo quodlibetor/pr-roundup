@@ -24,12 +24,18 @@ orgs = []
 # :name: into its emoji when the message is sent, if you want to use custom
 # emoji.
 [emoji]
-# merged = "🟣"
-# approved = "✅"
-# changes_requested = "🔴"
-# pending = "⏳"
+pending = "🟠"
+changes_requested = "🔴"
+commented = "💬"
+approved = "🟢"
+merged = "🟣"
+closed = "⚫️"
+# pending = "🟠"
+# changes_requested = ":github-changes-requested:"
 # commented = "💬"
-# closed = "⚫️"
+# approved = ":github-approved:"
+# merged = ":github-merged:"
+# closed = ":github-closed:"
 "#;
 
 #[derive(Debug, Deserialize)]
@@ -43,7 +49,6 @@ pub struct Config {
     pub repos: Vec<String>,
     #[serde(default)]
     pub orgs: Vec<String>,
-    #[serde(default)]
     pub emoji: Emoji,
 }
 
@@ -55,8 +60,9 @@ fn default_min_refresh() -> u64 {
     60
 }
 
+/// Every status must be given: `init` writes them all.
 #[derive(Debug, Deserialize)]
-#[serde(default, deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct Emoji {
     pub pending: String,
     pub commented: String,
@@ -64,19 +70,6 @@ pub struct Emoji {
     pub changes_requested: String,
     pub merged: String,
     pub closed: String,
-}
-
-impl Default for Emoji {
-    fn default() -> Self {
-        Emoji {
-            pending: "⏳".into(),
-            commented: "💬".into(),
-            approved: ":github-approved:".into(),
-            changes_requested: ":github-changes-requested:".into(),
-            merged: ":git-merged:".into(),
-            closed: "🚫".into(),
-        }
-    }
 }
 
 impl Emoji {
@@ -164,9 +157,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_example_parses_and_uses_the_default_emoji() {
+    fn the_example_parses_and_sets_every_emoji() {
         let config: Config = toml::from_str(EXAMPLE).unwrap();
-        assert_eq!(config.emoji.merged, ":git-merged:");
+        assert_eq!(config.emoji.merged, "🟣");
     }
 
     #[test]
@@ -182,10 +175,10 @@ mod tests {
     }
 
     #[test]
-    fn an_emoji_can_be_overridden_alone() {
-        let config: Config =
-            toml::from_str("repos = [\"o/r\"]\n[emoji]\npending = \":eyes:\"\n").unwrap();
-        assert_eq!(config.emoji.pending, ":eyes:");
-        assert_eq!(config.emoji.approved, ":github-approved:");
+    fn a_missing_emoji_is_an_error() {
+        let error = toml::from_str::<Config>("repos = [\"o/r\"]\n[emoji]\npending = \":eyes:\"\n")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("missing field"), "{error}");
     }
 }

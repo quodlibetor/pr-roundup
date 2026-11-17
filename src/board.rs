@@ -281,6 +281,17 @@ mod tests {
     use super::*;
     use crate::model::{StackEntry, Status};
 
+    fn slack_emoji() -> Emoji {
+        Emoji {
+            pending: "⏳".into(),
+            commented: "💬".into(),
+            approved: ":github-approved:".into(),
+            changes_requested: ":github-changes-requested:".into(),
+            merged: ":git-merged:".into(),
+            closed: "🚫".into(),
+        }
+    }
+
     fn pr(id: &str, repo: &str, base: &str, head: &str, updated: &str) -> Pr {
         Pr {
             id: id.into(),
@@ -436,7 +447,7 @@ mod tests {
                 stacks: vec![vec![approved], vec![pr("1", "o/r", "main", "b1", "1")]],
             }],
         };
-        let copied = copy(&section, &Emoji::default(), false);
+        let copied = copy(&section, &slack_emoji(), false);
         assert_eq!(
             copied.text,
             "*<rollout>*\n\
@@ -470,7 +481,7 @@ mod tests {
                 },
             ],
         };
-        let copied = copy(&section, &Emoji::default(), true);
+        let copied = copy(&section, &slack_emoji(), true);
         assert_eq!(
             copied.text,
             "*work*\n\

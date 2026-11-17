@@ -35,8 +35,9 @@ unset. Tags and repository order live in
 ## Slack emoji
 
 Each status is written into the copied text as configured under `[emoji]` in
-the config file. Slack shortcodes such as `:git-merged:` become emoji when the
-message is sent; the page itself always shows Unicode icons.
+the config file, which must set every status. Slack shortcodes such as
+`:git-merged:` for custom emoji become emoji when the message is sent; the
+page itself always shows Unicode icons.
 
 ## Development
 
