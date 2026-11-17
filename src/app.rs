@@ -136,15 +136,24 @@ impl App {
     }
 
     async fn poll_once(&self) -> Result<()> {
-        let mut prs = self.github.search(&self.config.searches()).await?;
-        let tagged: Vec<String> = self.store()?.tagged()?.into_keys().collect();
+        let tagged = self.store()?.tagged()?;
+        // A search for open pull requests can't find one that has finished,
+        // so look those up alongside it, in the same request.
+        let finished: Vec<String> = tagged
+            .iter()
+            .filter(|(_, tagged)| tagged.snapshot.is_finished())
+            .map(|(id, _)| id.clone())
+            .collect();
+        let mut prs = self
+            .github
+            .pull_requests(&self.config.searches(), &finished)
+            .await?;
+        // Ones that finished since the last poll, or that no search covers.
         let missing: Vec<String> = tagged
-            .into_iter()
+            .into_keys()
             .filter(|id| !prs.iter().any(|pr| pr.id == *id))
             .collect();
-        if !missing.is_empty() {
-            prs.extend(self.github.by_id(&missing).await?);
-        }
+        prs.extend(self.github.by_id(&missing).await?);
         self.store()?.update_snapshots(&prs)?;
         let mut latest = self.latest.write().map_err(|_| eyre!("lock poisoned"))?;
         latest.prs = prs;

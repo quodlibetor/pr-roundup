@@ -25,12 +25,15 @@ fragment Pr on PullRequest {
   }
 }";
 
+/// A page of a search, along with pull requests looked up by id, so that
+/// one request can do both.
 const SEARCH: &str = "
-query($q: String!, $after: String) {
+query($q: String!, $after: String, $ids: [ID!]!) {
   search(query: $q, type: ISSUE, first: 100, after: $after) {
     pageInfo { hasNextPage endCursor }
     nodes { __typename ...Pr }
   }
+  nodes(ids: $ids) { __typename ...Pr }
 }";
 
 const NODES: &str = "
@@ -98,10 +101,15 @@ impl GitHub {
     }
 
     /// Every open pull request each search finds, without duplicates.
-    pub async fn search(&self, searches: &[String]) -> Result<Vec<Pr>> {
+    /// Every pull request the searches find, and those with the ids in
+    /// `ids` whatever state they are in, without duplicates. The first
+    /// request also looks up the first hundred of `ids`.
+    pub async fn pull_requests(&self, searches: &[String], ids: &[String]) -> Result<Vec<Pr>> {
         #[derive(Deserialize)]
         struct Data {
             search: Search,
+            #[serde(default)]
+            nodes: Vec<Option<Value>>,
         }
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -116,14 +124,23 @@ impl GitHub {
             end_cursor: Option<String>,
         }
 
+        let (first_ids, later_ids) = ids.split_at(ids.len().min(100));
+        let mut ids = first_ids;
+        let mut looked_up: Vec<Pr> = Vec::new();
         let mut prs: Vec<Pr> = Vec::new();
         for q in searches {
             let mut after: Option<String> = None;
             loop {
                 let data: Data = self
-                    .query(SEARCH, json!({ "q": q, "after": after }))
+                    .query(SEARCH, json!({ "q": q, "after": after, "ids": ids }))
                     .await
                     .wrap_err_with(|| format!("searching for `{q}`"))?;
+                ids = &[];
+                looked_up.extend(
+                    data.nodes
+                        .into_iter()
+                        .filter_map(|node| pull_request(node, &self.ignore_authors)),
+                );
                 for pr in data
                     .search
                     .nodes
@@ -141,6 +158,12 @@ impl GitHub {
                     } => after = Some(cursor),
                     _ => break,
                 }
+            }
+        }
+        looked_up.extend(self.by_id(later_ids).await?);
+        for pr in looked_up {
+            if !prs.iter().any(|seen| seen.id == pr.id) {
+                prs.push(pr);
             }
         }
         Ok(prs)
