@@ -75,9 +75,13 @@ button:hover { border-color: var(--accent); }
 .section-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
   margin-bottom: 8px;
 }
+.section-head h2 { margin-right: auto; }
+.select { display: flex; align-items: center; padding: 0 4px; cursor: pointer; }
+.select input { width: 16px; height: 16px; margin: 0; cursor: pointer; }
+.copy-buttons { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .untagged { color: var(--muted); }
 
 .repo { padding: 6px 0; border-top: 1px dashed var(--border); }

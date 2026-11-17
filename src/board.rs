@@ -206,14 +206,9 @@ pub struct Copied {
 }
 
 /// Write `section` out the way `jj spr list --format slack` does, under the
-/// tag as a bold heading. Each stack is its own list.
-pub fn copy(section: &Section, emoji: &Emoji) -> Copied {
-    let stacks: Vec<&Vec<Pr>> = section
-        .repos
-        .iter()
-        .flat_map(|group| &group.stacks)
-        .collect();
-
+/// tag as a bold heading. Each stack is its own list; with `repo_headings`,
+/// each repository's stacks follow its name in italics.
+pub fn copy(section: &Section, emoji: &Emoji, repo_headings: bool) -> Copied {
     let mut text = String::new();
     let mut html = String::new();
     if let Some(tag) = &section.tag {
@@ -221,9 +216,10 @@ pub fn copy(section: &Section, emoji: &Emoji) -> Copied {
         let _ = write!(html, "<p><b>{}</b></p>", escape(tag));
     }
 
-    let lists: Vec<String> = stacks
-        .iter()
-        .map(|stack| {
+    // Blocks of the plain text, separated by blank lines.
+    let mut blocks: Vec<String> = Vec::new();
+    for group in &section.repos {
+        let lists = group.stacks.iter().map(|stack| {
             stack
                 .iter()
                 .map(|pr| {
@@ -236,23 +232,30 @@ pub fn copy(section: &Section, emoji: &Emoji) -> Copied {
                 })
                 .collect::<Vec<_>>()
                 .join("\n")
-        })
-        .collect();
-    text.push_str(&lists.join("\n\n"));
-
-    for stack in stacks {
-        html.push_str("<ul>");
-        for pr in stack {
-            let _ = write!(
-                html,
-                "<li>{} <a href=\"{}\">{}</a></li>",
-                escape(emoji.for_status(pr.status)),
-                escape(&pr.url),
-                escape(&pr.title),
-            );
+        });
+        if repo_headings {
+            let lists: Vec<String> = lists.collect();
+            blocks.push(format!("_{}_\n{}", group.repo, lists.join("\n\n")));
+            let _ = write!(html, "<p><i>{}</i></p>", escape(&group.repo));
+        } else {
+            blocks.extend(lists);
         }
-        html.push_str("</ul>");
+
+        for stack in &group.stacks {
+            html.push_str("<ul>");
+            for pr in stack {
+                let _ = write!(
+                    html,
+                    "<li>{} <a href=\"{}\">{}</a></li>",
+                    escape(emoji.for_status(pr.status)),
+                    escape(&pr.url),
+                    escape(&pr.title),
+                );
+            }
+            html.push_str("</ul>");
+        }
     }
+    text.push_str(&blocks.join("\n\n"));
 
     Copied { text, html }
 }
@@ -399,7 +402,7 @@ mod tests {
                 stacks: vec![vec![approved], vec![pr("1", "o/r", "main", "b1", "1")]],
             }],
         };
-        let copied = copy(&section, &Emoji::default());
+        let copied = copy(&section, &Emoji::default(), false);
         assert_eq!(
             copied.text,
             "*<rollout>*\n\
@@ -413,5 +416,43 @@ mod tests {
              <ul><li>:github-approved: <a href=\"https://github.com/o/r/pull/2\">title 2</a></li></ul>\
              <ul><li>⏳ <a href=\"https://github.com/o/r/pull/1\">title 1</a></li></ul>"
         );
+    }
+
+    #[test]
+    fn repo_headings_name_each_repository_before_its_stacks() {
+        let section = Section {
+            tag: Some("work".into()),
+            repos: vec![
+                RepoGroup {
+                    repo: "o/a".into(),
+                    stacks: vec![
+                        vec![pr("1", "o/a", "main", "x", "1")],
+                        vec![pr("2", "o/a", "main", "y", "1")],
+                    ],
+                },
+                RepoGroup {
+                    repo: "o/b".into(),
+                    stacks: vec![vec![pr("3", "o/b", "main", "z", "1")]],
+                },
+            ],
+        };
+        let copied = copy(&section, &Emoji::default(), true);
+        assert_eq!(
+            copied.text,
+            "*work*\n\
+             _o/a_\n\
+             - ⏳ title 1\n  https://github.com/o/a/pull/1\n\
+             \n\
+             - ⏳ title 2\n  https://github.com/o/a/pull/2\n\
+             \n\
+             _o/b_\n\
+             - ⏳ title 3\n  https://github.com/o/b/pull/3"
+        );
+        assert!(
+            copied
+                .html
+                .starts_with("<p><b>work</b></p><p><i>o/a</i></p><ul>")
+        );
+        assert!(copied.html.contains("</ul><p><i>o/b</i></p><ul>"));
     }
 }

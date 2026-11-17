@@ -9,7 +9,7 @@
 
   function editing() {
     const active = document.activeElement;
-    return !!(active && active.matches("#board input"));
+    return !!(active && active.matches("#board input[type=text]"));
   }
 
   // A live update would replace the input being typed into, so it waits
@@ -46,12 +46,59 @@
   }
   htmx.onLoad(localTimes);
 
-  // Copy a section with both flavours, so Slack pastes real links and a plain
-  // text editor still gets something readable.
+  // Copying. Each section carries its text in both formats; a button copies
+  // its own section plus any checked ones, in page order. When several are
+  // copied the untagged section is headed "Other", so its pull requests don't
+  // read as part of the group above them. Both clipboard flavours go on, so
+  // Slack pastes real links and a plain text editor still gets something
+  // readable.
+  const selected = new Set();
+
+  function sections() {
+    return Array.from(document.querySelectorAll("section.tag-section"));
+  }
+
+  // The sections `button` would copy.
+  function targets(button) {
+    const own = button.closest("section.tag-section");
+    return sections().filter((section) => section === own || selected.has(section.dataset.tag));
+  }
+
+  function label(button) {
+    const n = selected.size ? targets(button).length : 0;
+    button.textContent = n ? button.dataset.labelSelected.replace("{n}", n) : button.dataset.label;
+  }
+
+  function syncSelection() {
+    const present = new Set(sections().map((section) => section.dataset.tag));
+    for (const tag of selected) if (!present.has(tag)) selected.delete(tag);
+    sections().forEach((section) => {
+      const box = section.querySelector("input.select-section");
+      if (box) box.checked = selected.has(section.dataset.tag);
+    });
+    document.querySelectorAll("button.copy").forEach(label);
+  }
+  // A live update replaces the board; keep what was checked.
+  htmx.onLoad(syncSelection);
+
+  document.addEventListener("change", (event) => {
+    const box = event.target;
+    if (!box.matches || !box.matches("input.select-section")) return;
+    const tag = box.closest("section.tag-section").dataset.tag;
+    if (box.checked) selected.add(tag);
+    else selected.delete(tag);
+    syncSelection();
+  });
+
   document.addEventListener("click", async (event) => {
     const button = event.target.closest("button.copy");
     if (!button) return;
-    const { text, html } = button.dataset;
+    const chosen = targets(button);
+    const [textKey, htmlKey] = button.dataset.mode === "repos" ? ["textRepos", "htmlRepos"] : ["text", "html"];
+    const headed = (section, heading, body) =>
+      chosen.length > 1 && section.dataset.tag === "" ? heading + body : body;
+    const text = chosen.map((section) => headed(section, "*Other*\n", section.dataset[textKey])).join("\n\n");
+    const html = chosen.map((section) => headed(section, "<p><b>Other</b></p>", section.dataset[htmlKey])).join("");
     try {
       if (window.ClipboardItem) {
         await navigator.clipboard.write([
@@ -63,20 +110,18 @@
       } else {
         await navigator.clipboard.writeText(text);
       }
-      flash(button, "Copied ✓");
+      selected.clear();
+      syncSelection();
+      flash(button, chosen.length > 1 ? `Copied ${chosen.length} groups ✓` : "Copied ✓");
     } catch (error) {
       console.error(error);
       flash(button, "Copy failed");
     }
   });
 
-  function flash(button, label) {
-    const original = button.dataset.label || button.textContent;
-    button.dataset.label = original;
-    button.textContent = label;
-    setTimeout(() => {
-      button.textContent = original;
-    }, 1500);
+  function flash(button, text) {
+    button.textContent = text;
+    setTimeout(() => label(button), 1500);
   }
 
   // The tag field's suggestions. Focusing the field lists the tags with open

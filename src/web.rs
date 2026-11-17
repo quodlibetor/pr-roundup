@@ -106,8 +106,11 @@ fn render_board(app: &App) -> color_eyre::Result<Markup> {
                 p.empty { "No open pull requests." }
             }
             @for section in &board.sections {
-                @let copied = board::copy(section, &app.config.emoji);
-                section.tag-section data-tag=(section.order_key()) {
+                @let plain = board::copy(section, &app.config.emoji, false);
+                @let with_repos = board::copy(section, &app.config.emoji, true);
+                section.tag-section data-tag=(section.order_key())
+                    data-text=(plain.text) data-html=(plain.html)
+                    data-text-repos=(with_repos.text) data-html-repos=(with_repos.html) {
                     div.section-head {
                         h2 {
                             @match &section.tag {
@@ -115,8 +118,15 @@ fn render_board(app: &App) -> color_eyre::Result<Markup> {
                                 None => { span.untagged { "Untagged" } }
                             }
                         }
-                        button.copy type="button" data-text=(copied.text) data-html=(copied.html) {
-                            "Copy for Slack"
+                        div.copy-buttons {
+                            button.copy type="button" data-mode="plain" data-label="Copy" data-label-selected="Copy {n}" { "Copy" }
+                            button.copy type="button" data-mode="repos" data-label="Copy with repo headings"
+                                data-label-selected="Copy {n} with repo headings" {
+                                "Copy with repo headings"
+                            }
+                            label.select title="Select to copy with other groups" {
+                                input.select-section type="checkbox";
+                            }
                         }
                     }
                     div.repos {
