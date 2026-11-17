@@ -53,7 +53,8 @@ impl<E: Into<color_eyre::Report>> From<E> for WebError {
 type WebResult<T> = Result<T, WebError>;
 
 async fn index(State(app): State<Arc<App>>) -> WebResult<Markup> {
-    let board = render_board(&app)?;
+    let board = render_board(&app, false)?;
+    let controls = render_controls(&app, false)?;
     Ok(html! {
         (DOCTYPE)
         html lang="en" {
@@ -69,7 +70,7 @@ async fn index(State(app): State<Arc<App>>) -> WebResult<Markup> {
             body hx-ext="sse" sse-connect="/events" {
                 header {
                     h1 { "Open pull requests" }
-                    button.refresh hx-post="/refresh" hx-swap="none" { "Refresh now" }
+                    (controls)
                 }
                 (board)
             }
@@ -78,27 +79,47 @@ async fn index(State(app): State<Arc<App>>) -> WebResult<Markup> {
 }
 
 async fn board_fragment(State(app): State<Arc<App>>) -> WebResult<Markup> {
-    Ok(render_board(&app)?)
+    Ok(render_board(&app, true)?)
 }
 
-fn render_board(app: &App) -> color_eyre::Result<Markup> {
-    let board = app.board()?;
-    let live_tags = serde_json::to_string(&board.live_tags())?;
-    let (fetched_at, error) = {
-        let latest = app
-            .latest
-            .read()
-            .map_err(|_| color_eyre::eyre::eyre!("lock poisoned"))?;
-        (latest.fetched_at, latest.error.clone())
-    };
+/// The header's buttons and when GitHub was last polled. A board fragment
+/// carries it out of band, since the header itself is never swapped.
+fn render_controls(app: &App, oob: bool) -> color_eyre::Result<Markup> {
+    let fetched_at = app
+        .latest
+        .read()
+        .map_err(|_| color_eyre::eyre::eyre!("lock poisoned"))?
+        .fetched_at;
     Ok(html! {
-        div #board data-tags=(live_tags) hx-get="/board" hx-trigger="sse:update, reload" hx-swap="outerHTML" {
-            p.status {
+        div #controls hx-swap-oob=[oob.then_some("true")] {
+            div.buttons {
+                button.refresh hx-post="/refresh" hx-swap="none" { "Refresh now" }
+            }
+            p.updated {
                 @match fetched_at {
+                    // assets/app.js writes how long ago this was.
                     Some(at) => { "Updated " time data-epoch=(at) { (at) } }
                     None => { "Waiting for the first poll of GitHub…" }
                 }
             }
+        }
+    })
+}
+
+/// The board, and with `oob` the header's controls to swap alongside it.
+fn render_board(app: &App, oob: bool) -> color_eyre::Result<Markup> {
+    let board = app.board()?;
+    let live_tags = serde_json::to_string(&board.live_tags())?;
+    let error = app
+        .latest
+        .read()
+        .map_err(|_| color_eyre::eyre::eyre!("lock poisoned"))?
+        .error
+        .clone();
+    let controls = oob.then(|| render_controls(app, true)).transpose()?;
+    Ok(html! {
+        @if let Some(controls) = controls { (controls) }
+        div #board data-tags=(live_tags) hx-get="/board" hx-trigger="sse:update, reload" hx-swap="outerHTML" {
             @if let Some(error) = error {
                 pre.error { (error) }
             }
@@ -202,7 +223,7 @@ async fn set_tag(State(app): State<Arc<App>>, Form(form): Form<TagForm>) -> WebR
         app.store()?.set_tag(&pr, tag)?;
     }
     app.changed();
-    Ok(render_board(&app)?.into_response())
+    Ok(render_board(&app, true)?.into_response())
 }
 
 #[derive(Deserialize)]

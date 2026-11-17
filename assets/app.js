@@ -37,14 +37,29 @@
     if (board()) htmx.trigger(board(), "reload");
   });
 
-  function localTimes(root) {
-    root.querySelectorAll("time[data-epoch]").forEach((el) => {
+  // "Updated 5 minutes ago", with the exact time on hover.
+  function ago(seconds) {
+    const plural = (n, unit) => `${n} ${unit}${n === 1 ? "" : "s"} ago`;
+    if (seconds < 60) return "just now";
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return plural(minutes, "minute");
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return plural(hours, "hour");
+    return plural(Math.floor(hours / 24), "day");
+  }
+
+  function localTimes() {
+    document.querySelectorAll("time[data-epoch]").forEach((el) => {
       const date = new Date(Number(el.dataset.epoch) * 1000);
-      el.textContent = date.toLocaleTimeString();
-      el.title = date.toLocaleString();
+      el.textContent = ago(Math.max(0, (Date.now() - date) / 1000));
+      el.title = date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" });
     });
   }
-  htmx.onLoad(localTimes);
+  localTimes();
+  // The header's time arrives out of band, which htmx.onLoad doesn't report.
+  document.addEventListener("htmx:oobAfterSwap", localTimes);
+  document.addEventListener("htmx:afterSettle", localTimes);
+  setInterval(localTimes, 15000);
 
   // Copying. Each section carries its text in both formats; a button copies
   // its own section plus any checked ones, in page order. When several are
