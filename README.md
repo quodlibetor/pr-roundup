@@ -12,7 +12,9 @@ shape `jj spr list --format slack-links --copy` produces.
   repository's pull requests into stacks: GitHub's own stacks first, then
   chains where one pull request's base branch is another's head. Drag a
   repository's heading to reorder repositories within the section.
-- The page polls GitHub on an interval and pushes changes to open tabs over
+- GitHub is polled when the server starts and when the page is opened or
+  regains focus, at most once per `min_refresh_secs` (a minute by default);
+  "Refresh now" polls regardless. Results are pushed to open tabs over
   server-sent events. A live update waits while you are typing a tag.
 
 ## Running

@@ -31,6 +31,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/tag", post(set_tag))
         .route("/order", post(set_order))
         .route("/refresh", post(refresh))
+        .route("/check", post(check))
         .route("/include-approved", post(set_include_approved))
         .route("/assets/{file}", get(asset))
         .with_state(app)
@@ -261,9 +262,17 @@ async fn set_include_approved(
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn refresh(State(app): State<Arc<App>>) -> StatusCode {
-    app.refresh.notify_one();
-    StatusCode::NO_CONTENT
+/// "Refresh now": polls GitHub regardless of when it was last polled.
+async fn refresh(State(app): State<Arc<App>>) -> WebResult<StatusCode> {
+    app.request_refresh(true)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Sent when the page is opened or focused: polls GitHub unless that
+/// happened recently.
+async fn check(State(app): State<Arc<App>>) -> WebResult<StatusCode> {
+    app.request_refresh(false)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn asset(Path(file): Path<String>) -> Response {

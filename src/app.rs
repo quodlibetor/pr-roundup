@@ -3,7 +3,7 @@
 use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, Mutex, RwLock},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use color_eyre::{Result, eyre::eyre};
@@ -25,8 +25,10 @@ pub struct App {
     pub latest: RwLock<Latest>,
     /// Told whenever what the page shows may have changed.
     pub updates: broadcast::Sender<()>,
-    /// Wakes the poller early.
-    pub refresh: Notify,
+    /// Wakes the poller.
+    refresh: Notify,
+    /// When the poller was last woken, for rate limiting.
+    last_requested: Mutex<Option<Instant>>,
 }
 
 /// The outcome of the last poll.
@@ -57,6 +59,7 @@ impl App {
             }),
             updates: broadcast::channel(16).0,
             refresh: Notify::new(),
+            last_requested: Mutex::new(None),
         })
     }
 
@@ -135,9 +138,27 @@ impl App {
         Ok(())
     }
 
-    pub async fn poll_forever(self: Arc<Self>) {
-        let interval = Duration::from_secs(self.config.poll_interval_secs.max(10));
+    /// Asks for GitHub to be polled. Unless `force` is set, nothing happens
+    /// when the last request was within the configured minimum interval, so
+    /// that every page load and focus can ask without hammering GitHub.
+    pub fn request_refresh(&self, force: bool) -> Result<bool> {
+        let limit = Duration::from_secs(self.config.min_refresh_secs);
+        let mut last = self
+            .last_requested
+            .lock()
+            .map_err(|_| eyre!("lock poisoned"))?;
+        if !force && last.is_some_and(|at| at.elapsed() < limit) {
+            return Ok(false);
+        }
+        *last = Some(Instant::now());
+        self.refresh.notify_one();
+        Ok(true)
+    }
+
+    /// Polls GitHub each time a refresh is requested.
+    pub async fn poll_on_request(self: Arc<Self>) {
         loop {
+            self.refresh.notified().await;
             match self.poll_once().await {
                 Ok(()) => info!("polled GitHub"),
                 Err(error) => {
@@ -148,10 +169,6 @@ impl App {
                 }
             }
             self.changed();
-            tokio::select! {
-                () = tokio::time::sleep(interval) => {}
-                () = self.refresh.notified() => {}
-            }
         }
     }
 }

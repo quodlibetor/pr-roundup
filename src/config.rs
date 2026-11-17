@@ -16,7 +16,9 @@ repos = []
 orgs = []
 
 # port = 7845
-# poll_interval_secs = 120
+# GitHub is polled when the page is opened or focused, at most this often.
+# "Refresh now" ignores the limit.
+# min_refresh_secs = 60
 
 # What each status is written as in the text copied for Slack. Slack turns
 # :name: into its emoji when the message is sent, if you want to use custom
@@ -35,8 +37,8 @@ orgs = []
 pub struct Config {
     #[serde(default = "default_port")]
     pub port: u16,
-    #[serde(default = "default_poll_interval")]
-    pub poll_interval_secs: u64,
+    #[serde(default = "default_min_refresh")]
+    pub min_refresh_secs: u64,
     #[serde(default)]
     pub repos: Vec<String>,
     #[serde(default)]
@@ -49,8 +51,8 @@ fn default_port() -> u16 {
     7845
 }
 
-fn default_poll_interval() -> u64 {
-    120
+fn default_min_refresh() -> u64 {
+    60
 }
 
 #[derive(Debug, Deserialize)]

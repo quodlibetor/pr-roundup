@@ -37,6 +37,15 @@
     if (board()) htmx.trigger(board(), "reload");
   });
 
+  // GitHub is polled only when asked. Opening or returning to the page asks;
+  // the server ignores asks that come too soon after the last one.
+  function check() {
+    if (document.visibilityState === "visible") fetch("/check", { method: "POST" });
+  }
+  check();
+  window.addEventListener("focus", check);
+  document.addEventListener("visibilitychange", check);
+
   // "Updated 5 minutes ago", with the exact time on hover.
   function ago(seconds) {
     const plural = (n, unit) => `${n} ${unit}${n === 1 ? "" : "s"} ago`;

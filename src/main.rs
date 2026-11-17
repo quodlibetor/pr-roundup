@@ -62,7 +62,10 @@ async fn main() -> Result<()> {
     let github = github::GitHub::new().await?;
     let app = Arc::new(app::App::new(config, github, store)?);
 
-    tokio::spawn(Arc::clone(&app).poll_forever());
+    tokio::spawn(Arc::clone(&app).poll_on_request());
+    // Fetch now, so the first page load finds current data instead of
+    // showing stale tags and then swapping in the result of its own check.
+    app.request_refresh(true)?;
 
     // Only this machine: the clipboard API needs a secure context, which
     // localhost is, and nothing here is meant for anyone else.
