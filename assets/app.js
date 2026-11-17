@@ -34,8 +34,28 @@
   // After the server restarts the event stream reconnects; catch up on what
   // happened while it was gone.
   document.addEventListener("htmx:sseOpen", () => {
+    connected = true;
+    showConnection();
     if (board()) htmx.trigger(board(), "reload");
   });
+
+  // While the event stream is down the server can't be asked to refresh,
+  // so say so on the button. The stream reconnects by itself.
+  let connected = true;
+  function showConnection() {
+    const button = document.querySelector("#controls button.refresh");
+    if (!button) return;
+    button.disabled = !connected;
+    button.textContent = connected ? "Refresh now" : "Server not connected";
+    // A poll that was running when the server went away won't report its end.
+    if (!connected) document.getElementById("controls").classList.remove("polling");
+  }
+  document.addEventListener("htmx:sseError", () => {
+    connected = false;
+    showConnection();
+  });
+  // The server re-renders the button enabled.
+  document.addEventListener("htmx:oobAfterSwap", showConnection);
 
   // GitHub is polled only when asked. Opening or returning to the page asks;
   // the server ignores asks that come too soon after the last one.

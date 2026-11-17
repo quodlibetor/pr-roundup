@@ -77,6 +77,7 @@ button {
   cursor: pointer;
 }
 button:hover { border-color: var(--accent); }
+button:disabled { color: var(--muted); border-color: var(--border); cursor: not-allowed; }
 
 .error {
   background: var(--error-bg);
