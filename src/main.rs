@@ -93,7 +93,7 @@ async fn serve(config_path: &Path, args: Serve) -> Result<()> {
     let config = config::Config::load(config_path)?;
     let port = args.port.unwrap_or(config.port);
     let store = store::Store::open(&db_path)?;
-    let github = github::GitHub::new().await?;
+    let github = github::GitHub::new(config.ignore_authors.clone()).await?;
     let app = Arc::new(app::App::new(config, github, store)?);
 
     tokio::spawn(Arc::clone(&app).poll_on_request());

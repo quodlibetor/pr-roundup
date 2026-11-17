@@ -42,16 +42,19 @@ query($ids: [ID!]!) {
 pub struct GitHub {
     http: reqwest::Client,
     token: String,
+    /// Logins whose reviews and comments aren't feedback.
+    ignore_authors: Vec<String>,
 }
 
 impl GitHub {
-    pub async fn new() -> Result<GitHub> {
+    pub async fn new(ignore_authors: Vec<String>) -> Result<GitHub> {
         let http = reqwest::Client::builder()
             .user_agent("pr-roundup")
             .build()?;
         Ok(GitHub {
             http,
             token: token().await?,
+            ignore_authors,
         })
     }
 
@@ -121,7 +124,12 @@ impl GitHub {
                     .query(SEARCH, json!({ "q": q, "after": after }))
                     .await
                     .wrap_err_with(|| format!("searching for `{q}`"))?;
-                for pr in data.search.nodes.into_iter().filter_map(pull_request) {
+                for pr in data
+                    .search
+                    .nodes
+                    .into_iter()
+                    .filter_map(|node| pull_request(node, &self.ignore_authors))
+                {
                     if !prs.iter().any(|seen| seen.id == pr.id) {
                         prs.push(pr);
                     }
@@ -151,21 +159,26 @@ impl GitHub {
                 .query(NODES, json!({ "ids": chunk }))
                 .await
                 .wrap_err("looking up tagged pull requests")?;
-            prs.extend(data.nodes.into_iter().filter_map(pull_request));
+            prs.extend(
+                data.nodes
+                    .into_iter()
+                    .filter_map(|node| pull_request(node, &self.ignore_authors)),
+            );
         }
         Ok(prs)
     }
 }
 
 /// Turn a search or node result into a pull request, passing over issues and
-/// anything else that isn't one.
-fn pull_request(node: Option<Value>) -> Option<Pr> {
+/// anything else that isn't one. Reviews and comments by `ignore_authors`
+/// aren't feedback.
+fn pull_request(node: Option<Value>, ignore_authors: &[String]) -> Option<Pr> {
     let node = node?;
     if node.get("__typename").and_then(Value::as_str) != Some("PullRequest") {
         return None;
     }
     match serde_json::from_value::<RawPr>(node) {
-        Ok(raw) => Some(raw.into()),
+        Ok(raw) => Some(raw.into_pr(ignore_authors)),
         Err(error) => {
             warn!(%error, "could not read a pull request from GitHub's answer");
             None
@@ -273,10 +286,11 @@ fn timestamp(text: &str) -> Option<jiff::Timestamp> {
 
 impl RawPr {
     /// Whether `author` is someone giving feedback: not the pull request's
-    /// author, and not a bot such as CI.
-    fn is_reviewer(&self, author: Option<&RawAuthor>) -> bool {
+    /// author, not a bot such as CI, and not an account the config ignores.
+    fn is_reviewer(&self, author: Option<&RawAuthor>, ignore: &[String]) -> bool {
         let Some(author) = author else { return false };
         author.typename != "Bot"
+            && !ignore.contains(&author.login)
             && self
                 .author
                 .as_ref()
@@ -284,15 +298,15 @@ impl RawPr {
     }
 
     /// When someone else last reviewed or commented.
-    fn last_feedback(&self) -> Option<jiff::Timestamp> {
+    fn last_feedback(&self, ignore: &[String]) -> Option<jiff::Timestamp> {
         // A dismissed review has been withdrawn, often by a push that made
         // an approval stale.
         let reviews = Nodes::iter(self.reviews.as_ref())
             .filter(|review| review.state != "DISMISSED")
-            .filter(|review| self.is_reviewer(review.author.as_ref()))
+            .filter(|review| self.is_reviewer(review.author.as_ref(), ignore))
             .filter_map(|review| review.submitted_at.as_deref());
         let comments = Nodes::iter(self.comments.as_ref())
-            .filter(|comment| self.is_reviewer(comment.author.as_ref()))
+            .filter(|comment| self.is_reviewer(comment.author.as_ref(), ignore))
             .map(|comment| comment.created_at.as_str());
         reviews.chain(comments).filter_map(timestamp).max()
     }
@@ -308,8 +322,10 @@ impl RawPr {
     }
 }
 
-impl From<RawPr> for Pr {
-    fn from(raw: RawPr) -> Pr {
+impl RawPr {
+    fn into_pr(self, ignore_authors: &[String]) -> Pr {
+        let raw = self;
+        let last_feedback = raw.last_feedback(ignore_authors);
         let status = match (raw.state.as_str(), raw.review_decision.as_deref()) {
             ("MERGED", _) => Status::Merged,
             ("CLOSED", _) => Status::Closed,
@@ -317,11 +333,11 @@ impl From<RawPr> for Pr {
             (_, Some("CHANGES_REQUESTED")) => Status::ChangesRequested,
             // reviewDecision has no verdict for feedback that only
             // commented, so look for the feedback itself.
-            _ if raw.last_feedback().is_some() => Status::Commented,
+            _ if last_feedback.is_some() => Status::Commented,
             _ => Status::Pending,
         };
         let needs_rereview = matches!(status, Status::Commented | Status::ChangesRequested)
-            && match (raw.last_feedback(), raw.last_push()) {
+            && match (last_feedback, raw.last_push()) {
                 (Some(feedback), Some(push)) => push > feedback,
                 _ => false,
             };
@@ -369,6 +385,10 @@ async fn token() -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn pull_request(node: Option<Value>) -> Option<Pr> {
+        super::pull_request(node, &[])
+    }
 
     fn node(state: &str, decision: Option<&str>) -> Value {
         json!({
@@ -438,6 +458,14 @@ mod tests {
         let pr = pull_request(Some(open)).unwrap();
         assert_eq!(pr.status, Status::Commented);
         assert_eq!(pr.marks(), vec![Status::Commented]);
+    }
+
+    #[test]
+    fn ignored_authors_are_not_feedback() {
+        let mut open = node("OPEN", None);
+        comment(&mut open, "automation", "User", "2026-01-01T11:00:00Z");
+        let pr = super::pull_request(Some(open), &["automation".to_string()]).unwrap();
+        assert_eq!(pr.status, Status::Pending);
     }
 
     #[test]

@@ -14,6 +14,9 @@ pub const EXAMPLE: &str = r#"# Repositories whose open pull requests by you are 
 repos = []
 # Organizations: every repository in them is searched.
 orgs = []
+# Accounts whose reviews and comments don't count as feedback, such as
+# automation that GitHub doesn't mark as a bot: ["lw-ops-automation"].
+ignore_authors = []
 
 # port = 7845
 # GitHub is polled when the page is opened or focused, at most this often.
@@ -51,6 +54,8 @@ pub struct Config {
     pub repos: Vec<String>,
     #[serde(default)]
     pub orgs: Vec<String>,
+    #[serde(default)]
+    pub ignore_authors: Vec<String>,
     pub emoji: Emoji,
 }
 
