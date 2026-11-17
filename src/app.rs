@@ -2,7 +2,10 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    sync::{Arc, Mutex, RwLock},
+    sync::{
+        Arc, Mutex, RwLock,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -23,12 +26,23 @@ pub struct App {
     pub github: GitHub,
     pub store: Mutex<Store>,
     pub latest: RwLock<Latest>,
-    /// Told whenever what the page shows may have changed.
-    pub updates: broadcast::Sender<()>,
+    /// Told whenever what the page shows may have changed, or a poll starts
+    /// or ends.
+    pub updates: broadcast::Sender<Notice>,
+    /// Whether GitHub is being polled right now.
+    polling: AtomicBool,
     /// Wakes the poller.
     refresh: Notify,
     /// When the poller was last woken, for rate limiting.
     last_requested: Mutex<Option<Instant>>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Notice {
+    /// What the page shows may have changed.
+    Changed,
+    /// A poll of GitHub started (`true`) or ended.
+    Polling(bool),
 }
 
 /// The outcome of the last poll.
@@ -58,6 +72,7 @@ impl App {
                 ..Latest::default()
             }),
             updates: broadcast::channel(16).0,
+            polling: AtomicBool::new(false),
             refresh: Notify::new(),
             last_requested: Mutex::new(None),
         })
@@ -71,7 +86,7 @@ impl App {
 
     pub fn changed(&self) {
         // Nobody listening is fine.
-        let _ = self.updates.send(());
+        let _ = self.updates.send(Notice::Changed);
     }
 
     /// The pull request with this node id, from the last poll or a tag.
@@ -159,7 +174,10 @@ impl App {
     pub async fn poll_on_request(self: Arc<Self>) {
         loop {
             self.refresh.notified().await;
-            match self.poll_once().await {
+            self.set_polling(true);
+            let outcome = self.poll_once().await;
+            self.set_polling(false);
+            match outcome {
                 Ok(()) => info!("polled GitHub"),
                 Err(error) => {
                     warn!("polling GitHub failed: {error:?}");
@@ -170,6 +188,18 @@ impl App {
             }
             self.changed();
         }
+    }
+}
+
+impl App {
+    pub fn is_polling(&self) -> bool {
+        self.polling.load(Ordering::Relaxed)
+    }
+
+    fn set_polling(&self, polling: bool) {
+        self.polling.store(polling, Ordering::Relaxed);
+        // Nobody listening is fine.
+        let _ = self.updates.send(Notice::Polling(polling));
     }
 }
 

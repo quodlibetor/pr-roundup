@@ -46,6 +46,13 @@
   window.addEventListener("focus", check);
   document.addEventListener("visibilitychange", check);
 
+  // The server says when a poll starts and ends; #controls is re-rendered
+  // with the right state too, but only when the board next reloads.
+  document.addEventListener("sse:polling", (event) => {
+    const controls = document.getElementById("controls");
+    if (controls) controls.classList.toggle("polling", event.detail.data === "start");
+  });
+
   // "Updated 5 minutes ago", with the exact time on hover.
   function ago(seconds) {
     const plural = (n, unit) => `${n} ${unit}${n === 1 ? "" : "s"} ago`;

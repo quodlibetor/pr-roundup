@@ -55,6 +55,13 @@ header {
 .include-approved input { margin: 0; cursor: pointer; }
 .updated { margin: 0; color: var(--muted); font-size: 12px; }
 .updated time { cursor: help; }
+.spinner {
+  display: none; width: 9px; height: 9px; margin-left: 6px; vertical-align: -1px;
+  border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+#controls.polling .spinner { display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 h1 { font-size: 20px; margin: 0; }
 h2 { font-size: 16px; margin: 0; }

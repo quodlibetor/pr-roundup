@@ -16,7 +16,11 @@ use maud::{DOCTYPE, Markup, html};
 use serde::Deserialize;
 use tokio_stream::{Stream, StreamExt, wrappers::BroadcastStream};
 
-use crate::{app::App, board, model::Pr};
+use crate::{
+    app::{App, Notice},
+    board,
+    model::Pr,
+};
 
 const HTMX: &str = include_str!("../assets/htmx.min.js");
 const SSE: &str = include_str!("../assets/htmx-ext-sse.js");
@@ -70,7 +74,9 @@ async fn index(State(app): State<Arc<App>>) -> WebResult<Markup> {
                 script src="/assets/app.js" defer {}
             }
             body hx-ext="sse" sse-connect="/events" {
-                header {
+                // assets/app.js shows the spinner in #controls while a
+                // poll runs; the header itself is never swapped.
+                header hx-trigger="sse:polling" {
                     h1 { "Open pull requests" }
                     (controls)
                 }
@@ -94,7 +100,7 @@ fn render_controls(app: &App, oob: bool) -> color_eyre::Result<Markup> {
         .fetched_at;
     let include_approved = app.store()?.include_approved()?;
     Ok(html! {
-        div #controls hx-swap-oob=[oob.then_some("true")] {
+        div #controls.polling[app.is_polling()] hx-swap-oob=[oob.then_some("true")] {
             div.buttons {
                 label.include-approved {
                     input #include-approved type="checkbox" checked[include_approved];
@@ -108,6 +114,7 @@ fn render_controls(app: &App, oob: bool) -> color_eyre::Result<Markup> {
                     Some(at) => { "Updated " time data-epoch=(at) { (at) } }
                     None => { "Waiting for the first poll of GitHub…" }
                 }
+                span.spinner title="Polling GitHub" {}
             }
         }
     })
@@ -208,10 +215,17 @@ fn pr_row(pr: &Pr, tag: Option<&str>) -> Markup {
 
 async fn events(State(app): State<Arc<App>>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     // A lagged receiver missed some notices, which still means "update".
-    // The data is never read, but EventSource drops an event whose data is
-    // empty, so there has to be some.
-    let stream = BroadcastStream::new(app.updates.subscribe())
-        .map(|_| Ok(Event::default().event("update").data("changed")));
+    // EventSource drops an event whose data is empty, so an update carries
+    // some even though nothing reads it.
+    let stream =
+        BroadcastStream::new(app.updates.subscribe()).map(|notice| {
+            Ok(match notice {
+                Ok(Notice::Polling(polling)) => Event::default()
+                    .event("polling")
+                    .data(if polling { "start" } else { "end" }),
+                Ok(Notice::Changed) | Err(_) => Event::default().event("update").data("changed"),
+            })
+        });
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
