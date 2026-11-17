@@ -20,10 +20,13 @@ shape `jj spr list --format slack-links --copy` produces.
 ## Running
 
 ```sh
-pr-roundup --example-config > ~/.config/pr-roundup/config.toml
+pr-roundup init    # writes ~/.config/pr-roundup/config.toml
 $EDITOR ~/.config/pr-roundup/config.toml
-cargo run --release
+pr-roundup         # or: pr-roundup serve
 ```
+
+Serving without a config file runs `init` instead. The server won't start
+until `repos` or `orgs` lists something to search.
 
 The GitHub token comes from `$GITHUB_TOKEN`, or `gh auth token` when that is
 unset. Tags and repository order live in

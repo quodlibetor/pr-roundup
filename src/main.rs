@@ -9,27 +9,46 @@ mod model;
 mod store;
 mod web;
 
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{
+    net::SocketAddr,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use color_eyre::{Result, eyre::WrapErr};
 use tracing::info;
 
 #[derive(Parser)]
-#[command(about)]
+#[command(about, args_conflicts_with_subcommands = true)]
 struct Args {
     /// Defaults to $XDG_CONFIG_HOME/pr-roundup/config.toml.
-    #[arg(long)]
+    #[arg(long, global = true)]
     config: Option<PathBuf>,
+    #[command(subcommand)]
+    command: Option<Command>,
+    /// With no subcommand, `serve` runs with these.
+    #[command(flatten)]
+    serve: Serve,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Serve the page (the default). Runs `init` instead when there is no
+    /// config file.
+    Serve(Serve),
+    /// Write an example config file to edit.
+    Init,
+}
+
+#[derive(clap::Args)]
+struct Serve {
     /// Where tags are kept. Defaults to $XDG_DATA_HOME/pr-roundup/tags.db.
     #[arg(long)]
     db: Option<PathBuf>,
     /// Overrides the config file's port.
     #[arg(long)]
     port: Option<u16>,
-    /// Print an example config file and exit.
-    #[arg(long)]
-    example_config: bool,
 }
 
 #[tokio::main]
@@ -43,20 +62,35 @@ async fn main() -> Result<()> {
         .init();
 
     let args = Args::parse();
-    if args.example_config {
-        print!("{}", config::EXAMPLE);
-        return Ok(());
-    }
-
     let config_path = match args.config {
         Some(path) => path,
         None => config::default_config_path()?,
     };
+    match args.command {
+        Some(Command::Init) => init(&config_path),
+        Some(Command::Serve(serve_args)) => serve(&config_path, serve_args).await,
+        None => serve(&config_path, args.serve).await,
+    }
+}
+
+fn init(config_path: &Path) -> Result<()> {
+    config::Config::init(config_path)?;
+    println!(
+        "Wrote {}. Add the repositories or organizations to search to `repos` or `orgs` in it, then run pr-roundup again.",
+        config_path.display()
+    );
+    Ok(())
+}
+
+async fn serve(config_path: &Path, args: Serve) -> Result<()> {
+    if !config_path.exists() {
+        return init(config_path);
+    }
     let db_path = match args.db {
         Some(path) => path,
         None => config::default_db_path()?,
     };
-    let config = config::Config::load(&config_path)?;
+    let config = config::Config::load(config_path)?;
     let port = args.port.unwrap_or(config.port);
     let store = store::Store::open(&db_path)?;
     let github = github::GitHub::new().await?;

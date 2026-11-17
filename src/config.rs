@@ -100,10 +100,30 @@ impl Config {
         let config: Config =
             toml::from_str(&text).wrap_err_with(|| format!("parsing {}", path.display()))?;
         if config.repos.is_empty() && config.orgs.is_empty() {
-            return Err(eyre!("{} lists no repos or orgs", path.display()))
-                .with_section(|| EXAMPLE.to_string().header("An example config:"));
+            return Err(eyre!(
+                "{} lists no repos or orgs: add the repositories (\"owner/repo\") \
+                 or organizations to search to `repos` or `orgs` in it",
+                path.display()
+            ));
         }
         Ok(config)
+    }
+
+    /// Writes the example config to `path`, refusing to replace a file
+    /// already there.
+    pub fn init(path: &Path) -> Result<()> {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).wrap_err_with(|| format!("creating {}", dir.display()))?;
+        }
+        let mut file = std::fs::File::create_new(path).wrap_err_with(|| {
+            if path.exists() {
+                format!("{} already exists", path.display())
+            } else {
+                format!("creating {}", path.display())
+            }
+        })?;
+        std::io::Write::write_all(&mut file, EXAMPLE.as_bytes())
+            .wrap_err_with(|| format!("writing {}", path.display()))
     }
 
     /// One GitHub search per configured repository or organization.
@@ -147,7 +167,18 @@ mod tests {
     fn the_example_parses_and_uses_the_default_emoji() {
         let config: Config = toml::from_str(EXAMPLE).unwrap();
         assert_eq!(config.emoji.merged, ":git-merged:");
-        assert_eq!(config.searches().len(), 1);
+    }
+
+    #[test]
+    fn init_writes_a_config_that_load_rejects_until_repos_are_added() {
+        let dir = std::env::temp_dir().join(format!("pr-roundup-test-{}", std::process::id()));
+        let path = dir.join("nested").join("config.toml");
+        Config::init(&path).unwrap();
+        let error = Config::load(&path).unwrap_err().to_string();
+        assert!(error.contains("lists no repos or orgs"), "{error}");
+        let again = Config::init(&path).unwrap_err().to_string();
+        assert!(again.contains("already exists"), "{again}");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
