@@ -77,3 +77,8 @@ GIT_CEILING_DIRECTORIES="$(realpath ../..)" dist generate
 Pushing a `vX.Y.Z` tag that matches the version in `Cargo.toml` builds the
 release, publishes it on GitHub, and updates the Homebrew formula in
 `quodlibetor/homebrew-tap`.
+
+## License
+
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
+[MIT license](LICENSE-MIT), at your option.
