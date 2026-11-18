@@ -141,6 +141,22 @@ impl Store {
         Ok(orders)
     }
 
+    /// Moves every pull request tagged `old` to `new`, merging the two when
+    /// `new` is already in use, and returns how many moved. `new` keeps its
+    /// own repository order if it has one; otherwise it takes `old`'s.
+    pub fn rename_tag(&mut self, old: &str, new: &str) -> Result<usize> {
+        let tx = self.conn.transaction()?;
+        let moved = tx.execute("UPDATE tags SET tag = ?2 WHERE tag = ?1", params![old, new])?;
+        tx.execute(
+            "UPDATE OR IGNORE repo_order SET tag = ?2 WHERE tag = ?1
+             AND NOT EXISTS (SELECT 1 FROM repo_order WHERE tag = ?2)",
+            params![old, new],
+        )?;
+        tx.execute("DELETE FROM repo_order WHERE tag = ?1", params![old])?;
+        tx.commit()?;
+        Ok(moved)
+    }
+
     pub fn set_repo_order(&mut self, tag: &str, repos: &[String]) -> Result<()> {
         let tx = self.conn.transaction()?;
         tx.execute("DELETE FROM repo_order WHERE tag = ?1", params![tag])?;
@@ -201,6 +217,35 @@ mod tests {
         assert!(!store.include_approved().unwrap());
         store.set_include_approved(true).unwrap();
         assert!(store.include_approved().unwrap());
+    }
+
+    #[test]
+    fn renaming_a_tag_moves_its_pull_requests_and_order() {
+        let mut store = Store::in_memory().unwrap();
+        store.set_tag(&pr("a", Status::Pending), "old").unwrap();
+        store.set_tag(&pr("b", Status::Pending), "old").unwrap();
+        store.set_tag(&pr("c", Status::Pending), "other").unwrap();
+        store.set_repo_order("old", &["x/y".into()]).unwrap();
+
+        assert_eq!(store.rename_tag("old", "new").unwrap(), 2);
+        let tagged = store.tagged().unwrap();
+        assert_eq!(
+            (tagged["a"].tag.as_str(), tagged["c"].tag.as_str()),
+            ("new", "other")
+        );
+        let orders = store.repo_orders().unwrap();
+        assert_eq!(orders["new"], vec!["x/y".to_string()]);
+        assert!(!orders.contains_key("old"));
+
+        // Into a tag in use: a merge, and that tag's own order stands.
+        store.set_repo_order("other", &["p/q".into()]).unwrap();
+        assert_eq!(store.rename_tag("new", "other").unwrap(), 2);
+        assert!(store.tagged().unwrap().values().all(|t| t.tag == "other"));
+        let orders = store.repo_orders().unwrap();
+        assert_eq!(orders["other"], vec!["p/q".to_string()]);
+        assert!(!orders.contains_key("new"));
+
+        assert_eq!(store.rename_tag("missing", "x").unwrap(), 0);
     }
 
     #[test]

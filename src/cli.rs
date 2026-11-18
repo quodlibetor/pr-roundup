@@ -113,6 +113,24 @@ pub async fn untag(config: &Config, store: &Store, pr: &PrRef) -> Result<()> {
     Ok(())
 }
 
+pub async fn rename(config: &Config, store: &mut Store, old: &str, new: &str) -> Result<()> {
+    let new = new.trim();
+    if new.is_empty() {
+        return Err(eyre!("the new tag is empty"));
+    }
+    let merging = new != old && store.tagged()?.values().any(|tagged| tagged.tag == new);
+    let moved = store.rename_tag(old, new)?;
+    if moved == 0 {
+        return Err(eyre!(
+            "no pull request is tagged \"{old}\"; see `pr-roundup tags list`"
+        ));
+    }
+    let what = if merging { "merged into" } else { "renamed to" };
+    println!("\"{old}\" {what} \"{new}\" ({moved} pull requests)");
+    notify_server(config.port).await;
+    Ok(())
+}
+
 /// Every tag and its pull requests, as they were at the last poll.
 pub fn tags(store: &Store) -> Result<()> {
     let mut by_tag: BTreeMap<String, Vec<Pr>> = BTreeMap::new();

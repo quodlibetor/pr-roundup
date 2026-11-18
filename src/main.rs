@@ -70,6 +70,9 @@ enum Tags {
         /// A GitHub URL or owner/repo#123.
         pr: cli::PrRef,
     },
+    /// Rename a tag on every pull request that has it. Renaming to a tag
+    /// that's in use merges the two.
+    Rename { old: String, new: String },
 }
 
 #[derive(clap::Args)]
@@ -124,6 +127,10 @@ async fn main() -> Result<()> {
         Some(Command::Tags(Tags::Unset { pr })) => {
             let config = config::Config::load(&config_path)?;
             cli::untag(&config, &store::Store::open(&db_path)?, &pr).await
+        }
+        Some(Command::Tags(Tags::Rename { old, new })) => {
+            let config = config::Config::load(&config_path)?;
+            cli::rename(&config, &mut store::Store::open(&db_path)?, &old, &new).await
         }
         Some(Command::InstallSkill { force }) => cli::install_skill(force),
     }

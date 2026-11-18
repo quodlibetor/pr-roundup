@@ -13,9 +13,10 @@ need to be asked first.
 ## Commands
 
 ```sh
-pr-roundup tags list                  # every tag and its pull requests
-pr-roundup tags set <PR> "<tag>"      # tag a pull request and its stack
-pr-roundup tags unset <PR>            # remove one pull request's tag
+pr-roundup tags list                    # every tag and its pull requests
+pr-roundup tags set <PR> "<tag>"        # tag a pull request and its stack
+pr-roundup tags unset <PR>              # remove one pull request's tag
+pr-roundup tags rename "<old>" "<new>"  # rename a tag, or merge it into another
 ```
 
 `<PR>` is a GitHub URL or `owner/repo#123`. `set` also tags the rest of the
@@ -54,7 +55,8 @@ or that together finish one goal.
   example alerting work landing next to an "observability" group of logging
   and metrics changes that alerting doesn't use, propose to the user splitting
   it into narrower tags ("alerting" for the work that builds towards alerts,
-  "observability" for the rest). Ask before retagging pull requests that
+  "observability" for the rest), with `tags rename` for the part that keeps
+  the old tag's pull requests and `tags set` for the rest. Ask before retagging pull requests that
   already have a tag; tagging untagged ones needs no asking.
 - When a new pull request continues work that is tagged, give it that tag.
   When it starts a new effort, start a new tag, and say so in your reply so the

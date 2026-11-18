@@ -40,6 +40,7 @@ unset. Tags and repository order live in
 pr-roundup tags list
 pr-roundup tags set lacework/services#123 "some tag"   # or a pull request URL
 pr-roundup tags unset https://github.com/lacework/services/pull/123
+pr-roundup tags rename "some tag" "better name"        # merges into a tag in use
 ```
 
 `set` tags the rest of the pull request's stack too, as tagging on the page
