@@ -98,7 +98,8 @@
   setInterval(localTimes, 15000);
 
   // Copying. Each section carries its text in both formats; a button copies
-  // its own section plus any checked ones, in page order. When several are
+  // its own section plus any checked ones, in page order. Checked groups stay
+  // checked after copying, until unchecked or "Uncheck all groups". When several are
   // copied the untagged section is headed "Other", so its pull requests don't
   // read as part of the group above them. Both clipboard flavours go on, so
   // Slack pastes real links and a plain text editor still gets something
@@ -128,9 +129,19 @@
       if (box) box.checked = selected.has(section.dataset.tag);
     });
     document.querySelectorAll("button.copy").forEach(label);
+    const deselect = document.querySelector("#controls button.deselect");
+    if (deselect) deselect.disabled = selected.size === 0;
   }
-  // A live update replaces the board; keep what was checked.
+  // A live update replaces the board, and the header's controls out of band;
+  // keep what was checked.
   htmx.onLoad(syncSelection);
+  document.addEventListener("htmx:oobAfterSwap", syncSelection);
+
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest("#controls button.deselect")) return;
+    selected.clear();
+    syncSelection();
+  });
 
   document.addEventListener("change", (event) => {
     const box = event.target;
@@ -161,8 +172,6 @@
       } else {
         await navigator.clipboard.writeText(text);
       }
-      selected.clear();
-      syncSelection();
       flash(button, chosen.length > 1 ? `Copied ${chosen.length} groups ✓` : "Copied ✓");
     } catch (error) {
       console.error(error);

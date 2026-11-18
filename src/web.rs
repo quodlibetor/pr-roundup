@@ -103,6 +103,8 @@ fn render_controls(app: &App, oob: bool) -> color_eyre::Result<Markup> {
     Ok(html! {
         div #controls.polling[app.is_polling()] hx-swap-oob=[oob.then_some("true")] {
             div.buttons {
+                // assets/app.js enables it while any group is checked.
+                button.deselect type="button" disabled { "Uncheck all groups" }
                 label.include-approved {
                     input #include-approved type="checkbox" checked[include_approved];
                     "Include approved"
