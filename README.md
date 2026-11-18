@@ -4,8 +4,10 @@ A local web page that lists your open pull requests, lets you tag them, and
 copies each tag's pull requests to the clipboard as a list for Slack, in the
 shape `jj spr list --format slack-links --copy` produces.
 
-- Tagging a pull request moves it into that tag's section. A pull request has
-  at most one tag; clearing the field (or `×`) removes it.
+- Tagging a pull request moves it into that tag's section, along with the
+  rest of its stack, apart from pull requests that have a different tag. A
+  pull request has at most one tag; clearing the field (or `×`) removes it
+  from that one pull request.
 - A tagged pull request stays in its section after it merges or closes, until
   the tag is removed. Untagged ones disappear when they stop being open.
 - Within a section, pull requests are grouped by repository, and each
@@ -40,7 +42,8 @@ pr-roundup tags set lacework/services#123 "some tag"   # or a pull request URL
 pr-roundup tags unset https://github.com/lacework/services/pull/123
 ```
 
-These write to the database directly, so the server needn't be running; a
+`set` tags the rest of the pull request's stack too, as tagging on the page
+does. These write to the database directly, so the server needn't be running; a
 running one updates its page. `pr-roundup install-skill` installs a Claude
 Code skill, under `~/.claude/skills/pr-roundup/`, that teaches agents to tag
 the pull requests they open; its source is

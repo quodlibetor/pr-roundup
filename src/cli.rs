@@ -3,7 +3,11 @@
 //! to update its open pages.
 
 use std::{
-    collections::BTreeMap, fmt::Write as _, io::Write as _, path::PathBuf, str::FromStr,
+    collections::{BTreeMap, HashMap},
+    fmt::Write as _,
+    io::Write as _,
+    path::PathBuf,
+    str::FromStr,
     time::Duration,
 };
 
@@ -12,7 +16,7 @@ use color_eyre::{
     eyre::{WrapErr, eyre},
 };
 
-use crate::{config::Config, github::GitHub, model::Pr, store::Store};
+use crate::{board, config::Config, github::GitHub, model::Pr, store::Store};
 
 /// The agent skill that `install-skill` writes.
 pub const SKILL: &str = include_str!("../.claude/skills/pr-roundup/SKILL.md");
@@ -69,8 +73,27 @@ pub async fn tag(config: &Config, store: &Store, pr: &PrRef, tag: &str) -> Resul
     }
     let github = GitHub::new(config.ignore_authors.clone()).await?;
     let found = github.by_number(&pr.repo, pr.number).await?;
-    store.set_tag(&found, tag)?;
-    println!("Tagged {pr} \"{}\" as \"{tag}\"", found.title);
+    // The rest of its stack: the repository's open pull requests, as the
+    // page would list them, and any tagged ones.
+    let tagged = store.tagged()?;
+    let search = format!("repo:{} is:pr is:open author:@me archived:false", pr.repo);
+    let mut known = github.pull_requests(&[search], &[]).await?;
+    let tags: HashMap<String, String> = tagged
+        .into_iter()
+        .map(|(id, tagged)| {
+            if !known.iter().any(|pr| pr.id == id) {
+                known.push(tagged.snapshot);
+            }
+            (id, tagged.tag)
+        })
+        .collect();
+    for member in board::stack_to_tag(&found, known, &tags) {
+        store.set_tag(&member, tag)?;
+        println!(
+            "Tagged {}#{} \"{}\" as \"{tag}\"",
+            member.repo, member.number, member.title
+        );
+    }
     notify_server(config.port).await;
     Ok(())
 }

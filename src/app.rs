@@ -110,14 +110,18 @@ impl App {
     }
 
     pub fn board(&self) -> Result<Board> {
-        let (tagged, orders, include_approved) = {
+        let (orders, include_approved) = {
             let store = self.store()?;
-            (
-                store.tagged()?,
-                store.repo_orders()?,
-                store.include_approved()?,
-            )
+            (store.repo_orders()?, store.include_approved()?)
         };
+        let (prs, tags) = self.known()?;
+        Ok(board::build(prs, &tags, &orders, include_approved))
+    }
+
+    /// Every pull request from the last poll or a tag, and the tags by pull
+    /// request id.
+    fn known(&self) -> Result<(Vec<Pr>, HashMap<String, String>)> {
+        let tagged = self.store()?.tagged()?;
         let mut prs = self
             .latest
             .read()
@@ -132,7 +136,17 @@ impl App {
             }
             tags.insert(id, tagged.tag);
         }
-        Ok(board::build(prs, &tags, &orders, include_approved))
+        Ok((prs, tags))
+    }
+
+    /// Tags `pr` and the rest of its stack; see [`board::stack_to_tag`].
+    pub fn tag_stack(&self, pr: &Pr, tag: &str) -> Result<()> {
+        let (known, tags) = self.known()?;
+        let store = self.store()?;
+        for member in board::stack_to_tag(pr, known, &tags) {
+            store.set_tag(&member, tag)?;
+        }
+        Ok(())
     }
 
     async fn poll_once(&self) -> Result<()> {

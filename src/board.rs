@@ -154,6 +154,36 @@ pub fn stacks(prs: Vec<Pr>) -> Vec<Vec<Pr>> {
     stacks
 }
 
+/// The pull requests that tagging `target` with a tag also tags: `target`,
+/// and the others in its stack among `known` that are untagged or carry
+/// `target`'s current tag. A member given a different tag keeps it, so a
+/// stack deliberately split between tags stays split. `tags` maps pull
+/// request ids to their tags.
+pub fn stack_to_tag(target: &Pr, known: Vec<Pr>, tags: &HashMap<String, String>) -> Vec<Pr> {
+    let current = tags.get(&target.id);
+    let mut repo: Vec<Pr> = known
+        .into_iter()
+        .filter(|pr| pr.repo == target.repo && pr.id != target.id)
+        .collect();
+    repo.push(target.clone());
+    let Some(stack) = stacks(repo)
+        .into_iter()
+        .find(|stack| stack.iter().any(|pr| pr.id == target.id))
+    else {
+        return vec![target.clone()];
+    };
+    stack
+        .into_iter()
+        .filter(|pr| {
+            pr.id == target.id
+                || match tags.get(&pr.id) {
+                    None => true,
+                    Some(tag) => Some(tag) == current,
+                }
+        })
+        .collect()
+}
+
 fn branch_chains(prs: Vec<Pr>) -> Vec<Vec<Pr>> {
     let by_head: HashMap<&str, usize> = prs
         .iter()
@@ -331,6 +361,34 @@ mod tests {
             ids(&stacks),
             vec![vec!["alone"], vec!["top", "middle", "bottom"]]
         );
+    }
+
+    #[test]
+    fn tagging_reaches_the_untagged_and_same_tagged_rest_of_the_stack() {
+        // c on b on a, and d on its own.
+        let a = pr("a", "o/r", "main", "a", "1");
+        let b = pr("b", "o/r", "a", "b", "1");
+        let c = pr("c", "o/r", "b", "c", "1");
+        let d = pr("d", "o/r", "main", "d", "1");
+        let elsewhere = pr("e", "o/other", "b", "e", "1");
+        let known = vec![a, b.clone(), c, d, elsewhere];
+        let tag_ids = |tags: &HashMap<String, String>| {
+            let mut ids: Vec<String> = stack_to_tag(&b, known.clone(), tags)
+                .into_iter()
+                .map(|pr| pr.id)
+                .collect();
+            ids.sort();
+            ids
+        };
+
+        assert_eq!(tag_ids(&HashMap::new()), vec!["a", "b", "c"]);
+
+        // Retagging moves the members that shared b's tag, not one split off.
+        let tags: HashMap<String, String> = [("a", "old"), ("b", "old"), ("c", "split")]
+            .into_iter()
+            .map(|(id, tag)| (id.to_string(), tag.to_string()))
+            .collect();
+        assert_eq!(tag_ids(&tags), vec!["a", "b"]);
     }
 
     #[test]

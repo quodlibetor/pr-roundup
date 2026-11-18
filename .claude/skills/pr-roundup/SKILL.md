@@ -14,11 +14,13 @@ need to be asked first.
 
 ```sh
 pr-roundup tags list                  # every tag and its pull requests
-pr-roundup tags set <PR> "<tag>"      # set (or replace) a pull request's tag
-pr-roundup tags unset <PR>            # remove it
+pr-roundup tags set <PR> "<tag>"      # tag a pull request and its stack
+pr-roundup tags unset <PR>            # remove one pull request's tag
 ```
 
-`<PR>` is a GitHub URL or `owner/repo#123`. The commands work whether or not
+`<PR>` is a GitHub URL or `owner/repo#123`. `set` also tags the rest of the
+pull request's stack that is untagged or had its old tag, so tagging one pull
+request of a stack is enough. The commands work whether or not
 the pr-roundup server is running; a running one updates its page.
 
 ## Choosing a tag

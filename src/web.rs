@@ -244,7 +244,7 @@ async fn set_tag(State(app): State<Arc<App>>, Form(form): Form<TagForm>) -> WebR
         let Some(pr) = app.find(&form.id)? else {
             return Ok((StatusCode::NOT_FOUND, "no such pull request").into_response());
         };
-        app.store()?.set_tag(&pr, tag)?;
+        app.tag_stack(&pr, tag)?;
     }
     app.changed();
     Ok(render_board(&app, true)?.into_response())
