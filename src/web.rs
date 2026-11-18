@@ -36,6 +36,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/order", post(set_order))
         .route("/refresh", post(refresh))
         .route("/check", post(check))
+        .route("/changed", post(changed))
         .route("/include-approved", post(set_include_approved))
         .route("/assets/{file}", get(asset))
         .with_state(app)
@@ -282,6 +283,13 @@ async fn set_include_approved(
 async fn refresh(State(app): State<Arc<App>>) -> WebResult<StatusCode> {
     app.request_refresh(true)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Sent by the command line after it changes tags in the database, so open
+/// pages show them.
+async fn changed(State(app): State<Arc<App>>) -> StatusCode {
+    app.changed();
+    StatusCode::NO_CONTENT
 }
 
 /// Sent when the page is opened or focused: polls GitHub unless that

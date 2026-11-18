@@ -36,6 +36,11 @@ query($q: String!, $after: String, $ids: [ID!]!) {
   nodes(ids: $ids) { __typename ...Pr }
 }";
 
+const BY_NUMBER: &str = "
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) { pullRequest(number: $number) { __typename ...Pr } }
+}";
+
 const NODES: &str = "
 query($ids: [ID!]!) {
   nodes(ids: $ids) { __typename ...Pr }
@@ -167,6 +172,35 @@ impl GitHub {
             }
         }
         Ok(prs)
+    }
+
+    /// The pull request `number` in `repo` (`owner/name`), whatever state it
+    /// is in.
+    pub async fn by_number(&self, repo: &str, number: u64) -> Result<Pr> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Data {
+            repository: Option<Repository>,
+        }
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Repository {
+            pull_request: Option<Value>,
+        }
+
+        let (owner, name) = repo
+            .split_once('/')
+            .ok_or_else(|| eyre!("`{repo}` isn't owner/name"))?;
+        let data: Data = self
+            .query(
+                BY_NUMBER,
+                json!({ "owner": owner, "name": name, "number": number }),
+            )
+            .await
+            .wrap_err_with(|| format!("looking up {repo}#{number}"))?;
+        data.repository
+            .and_then(|repository| pull_request(repository.pull_request, &self.ignore_authors))
+            .ok_or_else(|| eyre!("GitHub has no pull request {repo}#{number}"))
     }
 
     /// The pull requests with these node ids, whatever state they are in.

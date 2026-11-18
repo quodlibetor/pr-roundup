@@ -32,6 +32,20 @@ The GitHub token comes from `$GITHUB_TOKEN`, or `gh auth token` when that is
 unset. Tags and repository order live in
 `$XDG_DATA_HOME/pr-roundup/tags.db`.
 
+## Tagging from the command line
+
+```sh
+pr-roundup tags list
+pr-roundup tags set lacework/services#123 "some tag"   # or a pull request URL
+pr-roundup tags unset https://github.com/lacework/services/pull/123
+```
+
+These write to the database directly, so the server needn't be running; a
+running one updates its page. `pr-roundup install-skill` installs a Claude
+Code skill, under `~/.claude/skills/pr-roundup/`, that teaches agents to tag
+the pull requests they open; its source is
+`.claude/skills/pr-roundup/SKILL.md`.
+
 ## Slack emoji
 
 Each status is written into the copied text as configured under `[emoji]` in
