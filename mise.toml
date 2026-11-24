@@ -29,3 +29,10 @@ GIT_CEILING_DIRECTORIES="$(dirname "$PWD")" dist generate --check \\
 [tasks.check]
 description = "The gate every change must pass"
 depends = ["fmt", "lint", "dist", "test"]
+
+# Regenerates the README's screenshots in docs/images/ from the hidden
+# `demo` subcommand; see scripts/screenshots.mjs.
+[tasks.screenshots]
+description = "Screenshot the demo page for the README (needs Chrome)"
+tools = { node = "26.10.0" }
+run = "node scripts/screenshots.mjs"

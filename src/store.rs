@@ -32,7 +32,7 @@ impl Store {
         Store::init(conn)
     }
 
-    #[cfg(test)]
+    /// For tests, and the demo.
     pub fn in_memory() -> Result<Store> {
         Store::init(Connection::open_in_memory()?)
     }

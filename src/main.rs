@@ -5,6 +5,7 @@ mod app;
 mod board;
 mod cli;
 mod config;
+mod demo;
 mod github;
 mod model;
 mod store;
@@ -52,6 +53,14 @@ enum Command {
         /// Replace an installed copy that differs from this version's.
         #[arg(long)]
         force: bool,
+    },
+    /// Serve the page over invented pull requests, for the README's
+    /// screenshots; see src/demo.rs.
+    #[command(hide = true)]
+    Demo {
+        /// 0 picks a free port.
+        #[arg(long, default_value_t = 0)]
+        port: u16,
     },
 }
 
@@ -133,6 +142,7 @@ async fn main() -> Result<()> {
             cli::rename(&config, &mut store::Store::open(&db_path)?, &old, &new).await
         }
         Some(Command::InstallSkill { force }) => cli::install_skill(force),
+        Some(Command::Demo { port }) => demo::serve(port).await,
     }
 }
 

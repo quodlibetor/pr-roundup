@@ -56,12 +56,16 @@ pub struct GitHub {
 
 impl GitHub {
     pub async fn new(ignore_authors: Vec<String>) -> Result<GitHub> {
+        GitHub::with_token(token().await?, ignore_authors)
+    }
+
+    pub fn with_token(token: String, ignore_authors: Vec<String>) -> Result<GitHub> {
         let http = reqwest::Client::builder()
             .user_agent("pr-roundup")
             .build()?;
         Ok(GitHub {
             http,
-            token: token().await?,
+            token,
             ignore_authors,
         })
     }
