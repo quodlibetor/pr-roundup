@@ -32,7 +32,7 @@ Run a script from the [most recent release][latest], or using homebrew
 `homebrew install quodlibetor/tap/pr-roundup`. Or using [mise][]: `mise use -g
 github:quodlibetor/pr-roundup@latest`.
 
-[latest]: https://github.com/quodlibetor/sanic-review/releases/latest
+[latest]: https://github.com/quodlibetor/pr-roundup/releases/latest
 [mise]: https://mise.jdx.dev/
 
 ## Usage
